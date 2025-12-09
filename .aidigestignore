@@ -1,3 +1,12 @@
 .coverage
 .env
 uv.lock
+codebase.md
+__pycache__
+.kiro
+.langgraph_api
+.pytest_cache
+.ruff_cache
+.venv
+agent_executor.egg-info
+tests/**/outputs/**
