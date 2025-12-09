@@ -25,6 +25,8 @@
 
 set -euo pipefail
 
+set -euo pipefail
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,11 +84,11 @@ cleanup() {
     
     if [ $exit_code -eq 0 ]; then
         log_success "Integration tests completed successfully"
+        exit 0
     else
         log_error "Integration tests failed with exit code: $exit_code"
+        exit $exit_code
     fi
-    
-    exit $exit_code
 }
 
 # Register cleanup to run on exit
@@ -202,3 +204,7 @@ main() {
 
 # Execute main function
 main
+exit_status=$?
+
+# Explicitly exit with the status from main
+exit $exit_status

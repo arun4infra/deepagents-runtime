@@ -98,12 +98,16 @@ if ! kubectl apply -f "$LLM_KEYS_ES"; then
 fi
 
 # Wait for ExternalSecret to sync
-log_info "Waiting for ExternalSecret to sync..."
+log_info "Waiting for ExternalSecret to sync (timeout: 120s)..."
 if ! kubectl wait externalsecret/agent-executor-llm-keys \
     -n "$NAMESPACE" \
     --for=condition=Ready \
     --timeout=120s 2>/dev/null; then
-    log_warn "ExternalSecret wait timed out, checking secret directly..."
+    log_warn "ExternalSecret wait timed out, checking status..."
+    log_warn "ExternalSecret status:"
+    kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml || true
+    log_warn "Checking ESO pod logs:"
+    kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets --tail=20 || true
 fi
 
 # Wait for the Kubernetes secret to be created
