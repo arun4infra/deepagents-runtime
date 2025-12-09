@@ -2,7 +2,7 @@
 FastAPI Application for Agent Executor Service.
 
 This module implements the main FastAPI application that serves as the entry point
-for the Agent Executor service. It handles incoming CloudEvents from Knative,
+for the Agent Executor service. It handles incoming CloudEvents from NATS JetStream,
 orchestrates agent execution, and emits result CloudEvents.
 
 The application provides:
@@ -13,7 +13,7 @@ The application provides:
 - Error handling for malformed events and execution failures
 
 Architecture:
-    Knative Broker → POST / → Parse CloudEvent → Build Graph → Execute → Emit Result
+    NATS JetStream → NATS Consumer → Parse CloudEvent → Build Graph → Execute → Emit Result
 
 References:
     - Requirements: Req. 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 5.1, 5.3, 5.5, NFR-3.1, NFR-4.1
@@ -330,7 +330,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # Initialize FastAPI application
 app = FastAPI(
     title="Agent Executor Service",
-    description="Serverless LangGraph Agent Execution Service for Knative",
+    description="Event-Driven LangGraph Agent Execution Service with KEDA Autoscaling",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -604,14 +604,14 @@ async def process_cloudevent(
     cloudevent_emitter: CloudEventEmitter = Depends(get_cloudevent_emitter)
 ) -> Response:
     """
-    Main endpoint for processing CloudEvents from Knative Broker.
+    Main endpoint for processing CloudEvents from NATS JetStream.
 
     This endpoint:
-    1. Receives CloudEvent from Knative (HTTP POST with CloudEvent headers)
+    1. Receives CloudEvent from NATS consumer (HTTP POST with CloudEvent headers)
     2. Parses JobExecutionEvent from CloudEvent data field
     3. Builds LangGraph agent from agent_definition
-    4. Executes agent with streaming to Redis
-    5. Emits result CloudEvent (completed or failed) to K_SINK
+    4. Executes agent with streaming to Dragonfly/Redis
+    5. Emits result CloudEvent (completed or failed) to NATS
     6. Returns HTTP 200 OK to acknowledge processing
 
     Request:
@@ -626,7 +626,7 @@ async def process_cloudevent(
     Error Handling:
         - Malformed events: Return 400 (no retry)
         - Execution failures: Emit job.failed CloudEvent, return 200
-        - Infrastructure failures: Return 503 (Knative will retry)
+        - Infrastructure failures: Return 503 (NATS will retry)
 
     References:
         - Requirements: Req. 1.1, 1.2, 1.3, 1.4, 3.1, 5.1, 5.3, 5.5
@@ -815,7 +815,7 @@ async def process_cloudevent(
             )
 
             # Return HTTP 200 OK (failure was handled by emitting failed event)
-            # This prevents Knative from retrying the job
+            # This prevents NATS from retrying the job
             return Response(status_code=status.HTTP_200_OK)
 
     except HTTPException:
@@ -823,7 +823,7 @@ async def process_cloudevent(
         raise
 
     except Exception as e:
-        # Unexpected error: Log and return 503 for Knative retry
+        # Unexpected error: Log and return 503 for NATS retry
         logger.error(
             "unexpected_error_processing_cloudevent",
             error=str(e),

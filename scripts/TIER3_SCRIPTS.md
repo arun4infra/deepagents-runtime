@@ -1,6 +1,6 @@
-# Agent Executor Service - Tier 3 Scripts
+# deepagnets-runtime - Tier 3 Scripts
 
-This directory contains Tier 3 scripts for the `agent-executor` service, following the Script Hierarchy Model standard defined in `.claude/skills/standards/script-hierarchy-model.md`.
+This directory contains Tier 3 scripts for the `deepagnets-runtime` service, following the Script Hierarchy Model standard defined in `.claude/skills/standards/script-hierarchy-model.md`.
 
 ## Script Hierarchy Overview
 
@@ -17,19 +17,18 @@ This directory contains **Tier 3 scripts** owned by the Backend Developer.
 ## Directory Structure
 
 ```
-services/agent_executor/scripts/
-├── README.md              # Vault configuration documentation
+scripts/
 ├── TIER3_SCRIPTS.md       # This file
-├── vault-init.sh          # Vault initialization (existing)
-├── populate-secrets.sh    # Vault secret population (existing)
 ├── ci/                    # CI/Production scripts
 │   ├── build.sh           # Build production Docker image
 │   ├── run.sh             # Container entrypoint (production)
-│   └── run-tests.sh       # Run E2E tests in CI
+│   └── run-tests.sh       # Run integration tests in CI
 └── local/                 # Local development scripts
     ├── run.sh             # Start service with hot-reload
     └── run-tests.sh       # Run all tests locally
 ```
+
+**Note**: Secret management is handled by External Secrets Operator (ESO) in production. No manual secret scripts needed.
 
 ---
 
@@ -77,16 +76,15 @@ ENTRYPOINT ["/app/scripts/ci/run.sh"]
 ```
 
 **Environment Variables:**
-- `PORT` (required): HTTP server port (default: `8080`, Knative requirement)
+- `PORT` (required): HTTP server port (default: `8080`)
 - `LOG_LEVEL` (optional): Logging verbosity (default: `info`)
-- `VAULT_ADDR` (required): HashiCorp Vault server address
-- `VAULT_ROLE` (required): Kubernetes service account role for Vault auth
+- All secrets injected via ESO and Crossplane (no manual configuration)
 
 **Behavior:**
 - Validates required environment variables
 - Starts uvicorn without Poetry (dependencies pre-installed)
 - Connects to infrastructure via environment variables
-- Respects Knative `$PORT` for autoscaling
+- Respects `$PORT` environment variable for container runtime
 
 **Called by:** Docker/Kubernetes container runtime
 
@@ -111,8 +109,7 @@ ENTRYPOINT ["/app/scripts/ci/run.sh"]
 - `NATS_URL` (required): NATS server connection string
 - `TEST_POSTGRES_URI` (required): PostgreSQL connection for monitoring
 - `TEST_REDIS_URL` (required): Redis connection for monitoring
-- `VAULT_ADDR` (required): Vault server address
-- `VAULT_TOKEN` (required): Vault authentication token
+- `NATS_URL` (required): NATS connection URL
 - `TESTS_PATH` (optional): Path to E2E test file (default: `/root/development/bizmatters/tests/e2e/test_agent_executor_e2e.py`)
 
 **Behavior:**
@@ -201,8 +198,7 @@ cd services/agent_executor
 **Environment Variables:**
 - `PORT` (optional): HTTP server port (default: `8080`)
 - `LOG_LEVEL` (optional): Logging verbosity (default: `debug`)
-- `VAULT_ADDR` (optional): Vault server address (default: `http://localhost:8200`)
-- `VAULT_TOKEN` (optional): Vault authentication token (default: `root`)
+- All secrets loaded from `.env` file for local development
 
 **Called by:** Developer via terminal (NEVER by CI)
 
@@ -235,8 +231,7 @@ cd services/agent_executor
 **Environment Variables:**
 - `TESTING=true`: Automatically set by script
 - `LOG_LEVEL` (optional): Logging verbosity (default: `info`)
-- `VAULT_ADDR` (optional): Vault server address (default: `http://localhost:8200`)
-- `VAULT_TOKEN` (optional): Vault authentication token (default: `root`)
+- All secrets loaded from `.env` file for local testing
 
 **Output:**
 - Coverage report: `services/agent_executor/htmlcov/index.html`
@@ -320,7 +315,7 @@ ENTRYPOINT ["/app/scripts/ci/run.sh"]
 
 This ensures:
 - Consistent startup behavior across environments
-- Proper handling of `$PORT` for Knative autoscaling
+- Proper handling of `$PORT` for container runtime
 - Centralized environment variable validation
 
 ---
@@ -331,12 +326,12 @@ This ensures:
 - Ensure Docker is installed and in PATH
 - Build scripts must run from monorepo root
 
-### Run script fails with "VAULT_ADDR not set"
-- Check environment variables in Kubernetes deployment
-- For local development, set in `.env` file
+### Run script fails with missing environment variables
+- Check `.env` file exists and is properly configured
+- Verify ESO secrets are syncing in Kubernetes (production)
 
 ### Tests fail with "connection refused"
-- Verify infrastructure is running (Vault, PostgreSQL, Redis, NATS)
+- Verify infrastructure is running (PostgreSQL, Dragonfly, NATS)
 - For local tests, start Docker Compose or adjust connection strings
 
 ### Hot-reload not working in local development
@@ -348,9 +343,8 @@ This ensures:
 ## Related Documentation
 
 - **Script Hierarchy Standard:** `.claude/skills/standards/script-hierarchy-model.md`
-- **Vault Configuration:** `services/agent_executor/scripts/README.md`
-- **E2E Tests:** `tests/e2e/test_agent_executor_e2e.py`
-- **Service README:** `services/agent_executor/README.md`
+- **Platform Documentation:** `../zerotouch-platform/README.md`
+- **Service README:** `README.md`
 - **Deployment Guide:** `services/agent_executor/DEPLOYMENT.md`
 
 ---
