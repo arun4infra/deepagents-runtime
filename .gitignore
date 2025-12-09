@@ -8,3 +8,4 @@ htmlcov
 uv.lock
 .ruff_cache
 agent_executor.egg-info
+.kiro
