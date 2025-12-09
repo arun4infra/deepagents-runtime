@@ -1,0 +1,185 @@
+name: DeepAgents Integration Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'platform/claims/**'
+      - '.github/workflows/deepagnets-integration-tests.yml'
+      - 'scripts/ci/**'
+      - 'tests/integration/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'platform/claims/**'
+      - '.github/workflows/deepagnets-integration-tests.yml'
+      - 'scripts/ci/**'
+      - 'tests/integration/**'
+  workflow_dispatch:
+    inputs:
+      platform_branch:
+        description: 'zerotouch-platform branch to test against'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  id-token: write      # Required for AWS OIDC authentication
+  contents: read       # Required to checkout repository
+  pull-requests: write # Required to comment on PRs
+
+jobs:
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Checkout deepagnets-runtime
+        uses: actions/checkout@v4
+        with:
+          path: deepagnets-runtime
+      
+      - name: Clone zerotouch-platform
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/zerotouch-platform
+          ref: ${{ inputs.platform_branch || 'main' }}
+          path: zerotouch-platform
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      
+      - name: Export AWS credentials as environment variables
+        run: |
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+          # Mask credentials in logs
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          echo "::add-mask::$AWS_SESSION_TOKEN"
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install system dependencies
+        run: |
+          # Install Kind
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          
+          # Install Helm
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          
+          # Verify installations
+          kind version
+          kubectl version --client
+          helm version
+      
+      - name: Run integration tests
+        id: run_tests
+        working-directory: deepagnets-runtime
+        env:
+          ZEROTOUCH_PLATFORM_DIR: ${{ github.workspace }}/zerotouch-platform
+          PLATFORM_BRANCH: ${{ inputs.platform_branch || 'main' }}
+        run: |
+          chmod +x scripts/ci/run-integration-tests.sh
+          ./scripts/ci/run-integration-tests.sh
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            deepagnets-runtime/artifacts/test-results.xml
+            deepagnets-runtime/artifacts/coverage.xml
+            deepagnets-runtime/artifacts/htmlcov/
+          retention-days: 30
+      
+      - name: Upload debugging artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-artifacts
+          path: |
+            deepagnets-runtime/artifacts/pods.txt
+            deepagnets-runtime/artifacts/keda-scaledobjects.txt
+            deepagnets-runtime/artifacts/crossplane-claims.txt
+            deepagnets-runtime/artifacts/agent-executor-logs.txt
+          retention-days: 30
+      
+      - name: Parse test results
+        if: always() && github.event_name == 'pull_request'
+        id: parse_results
+        run: |
+          if [ -f deepagnets-runtime/artifacts/test-results.xml ]; then
+            # Extract test summary from JUnit XML
+            TESTS=$(grep -oP 'tests="\K[0-9]+' deepagnets-runtime/artifacts/test-results.xml | head -1)
+            FAILURES=$(grep -oP 'failures="\K[0-9]+' deepagnets-runtime/artifacts/test-results.xml | head -1)
+            ERRORS=$(grep -oP 'errors="\K[0-9]+' deepagnets-runtime/artifacts/test-results.xml | head -1)
+            
+            echo "tests=${TESTS:-0}" >> $GITHUB_OUTPUT
+            echo "failures=${FAILURES:-0}" >> $GITHUB_OUTPUT
+            echo "errors=${ERRORS:-0}" >> $GITHUB_OUTPUT
+          else
+            echo "tests=0" >> $GITHUB_OUTPUT
+            echo "failures=0" >> $GITHUB_OUTPUT
+            echo "errors=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Comment PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tests = '${{ steps.parse_results.outputs.tests }}';
+            const failures = '${{ steps.parse_results.outputs.failures }}';
+            const errors = '${{ steps.parse_results.outputs.errors }}';
+            const passed = parseInt(tests) - parseInt(failures) - parseInt(errors);
+            const success = parseInt(failures) === 0 && parseInt(errors) === 0;
+            
+            const emoji = success ? '✅' : '❌';
+            const status = success ? 'PASSED' : 'FAILED';
+            
+            const body = `## ${emoji} Integration Tests ${status}
+            
+            **Test Summary:**
+            - Total Tests: ${tests}
+            - Passed: ${passed}
+            - Failed: ${failures}
+            - Errors: ${errors}
+            
+            **Platform Branch:** \`${{ inputs.platform_branch || 'main' }}\`
+            
+            ${success ? '🎉 All integration tests passed!' : '⚠️ Some tests failed. Please review the artifacts for details.'}
+            
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

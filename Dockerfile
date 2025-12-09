@@ -17,7 +17,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 # Copy pyproject.toml for dependency installation
-COPY services/agent_executor/pyproject.toml ./pyproject.toml
+COPY pyproject.toml ./pyproject.toml
 
 # Install system dependencies for psycopg v3 and psql client (for migrations)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,18 +30,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
-COPY services/agent_executor/api/ ./agent_executor/api/
-COPY services/agent_executor/core/ ./agent_executor/core/
-COPY services/agent_executor/services/ ./agent_executor/services/
-COPY services/agent_executor/models/ ./agent_executor/models/
-COPY services/agent_executor/observability/ ./agent_executor/observability/
-COPY services/agent_executor/__init__.py ./agent_executor/__init__.py
+COPY api/ ./agent_executor/api/
+COPY core/ ./agent_executor/core/
+COPY services/ ./agent_executor/services/
+COPY models/ ./agent_executor/models/
+COPY observability/ ./agent_executor/observability/
+COPY __init__.py ./agent_executor/__init__.py
 
 # Copy migrations directory (required by init container)
-COPY services/agent_executor/migrations/ ./migrations/
+COPY migrations/ ./migrations/
 
 # Copy Tier 3 scripts (for CI entrypoint)
-COPY services/agent_executor/scripts/ ./scripts/
+COPY scripts/ ./scripts/
 
 # Set ownership to non-root user
 RUN chown -R appuser:appuser /app && \
