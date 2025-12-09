@@ -335,11 +335,12 @@ log_info "Step 9: Creating NATS JetStream streams..."
 sleep 5
 
 # Get nats-box pod name (has nats CLI tools)
-NATS_BOX_POD=$(kubectl get pod -n "$NATS_NAMESPACE" -l app=nats-box -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+NATS_BOX_POD=$(kubectl get pod -n "$NATS_NAMESPACE" -l app=nats-box -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
 if [[ -z "$NATS_BOX_POD" ]]; then
     log_warn "Could not find nats-box pod, skipping stream creation"
     log_warn "Streams will be created by the application on first use"
+    log_info "NATS setup complete (streams will be auto-created)"
 else
     log_info "Using nats-box pod: $NATS_BOX_POD"
     
@@ -378,10 +379,7 @@ else
             return 1
         fi
     }
-fi
-
-# Create streams if nats-box is available
-if [[ -n "$NATS_BOX_POD" ]]; then
+    
     # Create AGENT_EXECUTION stream
     if ! create_nats_stream "AGENT_EXECUTION" "agent.execution.>"; then
         log_warn "Failed to create AGENT_EXECUTION stream, will be created by application"
@@ -393,8 +391,6 @@ if [[ -n "$NATS_BOX_POD" ]]; then
     fi
 
     log_info "NATS streams created successfully"
-else
-    log_info "Skipping stream creation, will be handled by application"
 fi
 
 # ============================================================================
