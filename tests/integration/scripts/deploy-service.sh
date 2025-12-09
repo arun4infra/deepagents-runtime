@@ -174,12 +174,19 @@ log_info "Step 6: Waiting for database connection secrets..."
 # Wait for PostgreSQL connection secret
 log_info "Waiting for PostgreSQL connection secret..."
 RETRY_COUNT=0
-MAX_RETRIES=60
+MAX_RETRIES=120  # 10 minutes (120 * 5s) for database provisioning
 while ! resource_exists "secret" "agent-executor-db-conn" "$NAMESPACE"; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
         log_error "Timeout waiting for PostgreSQL connection secret"
+        log_error "PostgresInstance status:"
         kubectl get postgresinstance -n "$NAMESPACE" agent-executor-db -o yaml || true
+        log_error "XPostgresInstance status:"
+        kubectl get xpostgresinstance -A || true
+        log_error "CNPG Cluster status:"
+        kubectl get cluster -A || true
+        log_error "CNPG Cluster pods:"
+        kubectl get pods -A -l cnpg.io/cluster || true
         exit 3
     fi
     log_info "Waiting for PostgreSQL secret... (attempt $RETRY_COUNT/$MAX_RETRIES)"
@@ -191,12 +198,17 @@ log_info "PostgreSQL connection secret created"
 # Wait for Dragonfly connection secret
 log_info "Waiting for Dragonfly connection secret..."
 RETRY_COUNT=0
-MAX_RETRIES=60
+MAX_RETRIES=120  # 10 minutes (120 * 5s) for database provisioning
 while ! resource_exists "secret" "agent-executor-cache-conn" "$NAMESPACE"; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
         log_error "Timeout waiting for Dragonfly connection secret"
+        log_error "DragonflyInstance status:"
         kubectl get dragonflyinstance -n "$NAMESPACE" agent-executor-cache -o yaml || true
+        log_error "XDragonflyInstance status:"
+        kubectl get xdragonflyinstance -A || true
+        log_error "Dragonfly pods:"
+        kubectl get pods -A -l app=dragonfly || true
         exit 3
     fi
     log_info "Waiting for Dragonfly secret... (attempt $RETRY_COUNT/$MAX_RETRIES)"
