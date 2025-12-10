@@ -14,7 +14,7 @@ spec:
   data:
     - secretKey: OPENAI_API_KEY
       remoteRef:
-        key: /zerotouch/prod/agent-executor/openai_api_key
+        key: /zerotouch/prod/openai_api_key
     - secretKey: ANTHROPIC_API_KEY
       remoteRef:
-        key: /zerotouch/prod/agent-executor/anthropic_api_key
+        key: /zerotouch/prod/anthropic_api_key
