@@ -132,9 +132,31 @@ fi
 log_info "All XRDs established successfully"
 
 # ============================================================================
-# Step 4: Install Database Compositions
+# Step 4: Install ProviderConfig
 # ============================================================================
-log_info "Step 4: Installing database Compositions..."
+log_info "Step 4: Installing ProviderConfig from platform..."
+
+PROVIDER_CONFIG="$ZEROTOUCH_PLATFORM_DIR/platform/05-databases/provider-config.yaml"
+
+if [[ ! -f "$PROVIDER_CONFIG" ]]; then
+    log_error "ProviderConfig not found: $PROVIDER_CONFIG"
+    exit 3
+fi
+
+if resource_exists "providerconfig.kubernetes.crossplane.io" "kubernetes-provider" ""; then
+    log_info "ProviderConfig 'kubernetes-provider' already exists, updating..."
+    kubectl apply -f "$PROVIDER_CONFIG"
+else
+    log_info "Creating ProviderConfig from platform..."
+    kubectl apply -f "$PROVIDER_CONFIG"
+fi
+
+log_info "ProviderConfig installed successfully"
+
+# ============================================================================
+# Step 5: Install Database Compositions
+# ============================================================================
+log_info "Step 5: Installing database Compositions..."
 
 # Install PostgreSQL Composition
 log_info "Installing PostgreSQL Composition..."
@@ -169,9 +191,9 @@ fi
 log_info "Database Compositions installed successfully"
 
 # ============================================================================
-# Step 5: Install EventDrivenService Composition
+# Step 6: Install EventDrivenService Composition
 # ============================================================================
-log_info "Step 5: Installing EventDrivenService Composition..."
+log_info "Step 6: Installing EventDrivenService Composition..."
 
 if [[ ! -f "$EVENT_DRIVEN_COMPOSITION" ]]; then
     log_error "EventDrivenService Composition not found: $EVENT_DRIVEN_COMPOSITION"
@@ -189,9 +211,9 @@ fi
 log_info "EventDrivenService Composition installed successfully"
 
 # ============================================================================
-# Step 6: Validate Installation
+# Step 7: Validate Installation
 # ============================================================================
-log_info "Step 6: Validating platform API installation..."
+log_info "Step 7: Validating platform API installation..."
 
 # Verify XRDs are registered
 log_info "Verifying XRDs..."

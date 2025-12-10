@@ -174,7 +174,7 @@ log_info "Step 6: Waiting for database connection secrets..."
 # Wait for PostgreSQL connection secret
 log_info "Waiting for PostgreSQL connection secret..."
 RETRY_COUNT=0
-MAX_RETRIES=120  # 10 minutes (120 * 5s) for database provisioning
+MAX_RETRIES=60  # 5 minutes (60 * 5s) for database provisioning
 while ! resource_exists "secret" "agent-executor-db-conn" "$NAMESPACE"; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
@@ -198,7 +198,7 @@ log_info "PostgreSQL connection secret created"
 # Wait for Dragonfly connection secret
 log_info "Waiting for Dragonfly connection secret..."
 RETRY_COUNT=0
-MAX_RETRIES=120  # 10 minutes (120 * 5s) for database provisioning
+MAX_RETRIES=60  # 5 minutes (60 * 5s) for database provisioning
 while ! resource_exists "secret" "agent-executor-cache-conn" "$NAMESPACE"; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then

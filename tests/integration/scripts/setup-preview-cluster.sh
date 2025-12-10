@@ -145,21 +145,7 @@ if ! kubectl wait provider.pkg.crossplane.io/provider-kubernetes \
     exit 3
 fi
 
-# Create ProviderConfig for in-cluster access
-if resource_exists "providerconfig.kubernetes.crossplane.io" "kubernetes-provider" ""; then
-    log_info "ProviderConfig 'kubernetes-provider' already exists"
-else
-    log_info "Creating ProviderConfig for in-cluster access..."
-    cat <<EOF | kubectl apply -f -
-apiVersion: kubernetes.crossplane.io/v1alpha1
-kind: ProviderConfig
-metadata:
-  name: kubernetes-provider
-spec:
-  credentials:
-    source: InjectedIdentity
-EOF
-fi
+# Note: ProviderConfig will be installed by install-platform-apis.sh from the platform repo
 
 log_info "Crossplane Kubernetes provider installed successfully"
 
