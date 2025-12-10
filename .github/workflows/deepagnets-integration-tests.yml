@@ -83,6 +83,7 @@ jobs:
         working-directory: zerotouch-platform
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PAT_GITHUB_USER: ${{ secrets.PAT_GITHUB_USER }}
           PAT_GITHUB: ${{ secrets.PAT_GITHUB }}
         run: |

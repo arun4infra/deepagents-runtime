@@ -87,10 +87,32 @@ log_info "Step 4: Applying ExternalSecret for LLM keys..."
 kubectl apply -f "$EXTERNAL_SECRETS_DIR/llm-keys-es.yaml"
 
 log_info "Waiting for secret to be created (timeout: 120s)..."
+
+# First wait for ExternalSecret to be ready (shows actual ESO errors)
+log_info "Checking ExternalSecret status..."
+for i in {1..24}; do
+    STATUS=$(kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+    REASON=$(kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}' 2>/dev/null || echo "")
+    MESSAGE=$(kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}' 2>/dev/null || echo "")
+    
+    if [ "$STATUS" = "True" ]; then
+        log_info "ExternalSecret is ready"
+        break
+    elif [ "$STATUS" = "False" ]; then
+        log_error "ExternalSecret failed: $REASON - $MESSAGE"
+        kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml
+        exit 2
+    fi
+    
+    log_info "ExternalSecret status: $STATUS (attempt $i/24)..."
+    sleep 5
+done
+
+# Now wait for the actual secret
 kubectl wait secret/agent-executor-llm-keys \
     -n "$NAMESPACE" \
     --for=jsonpath='{.data}' \
-    --timeout=120s || {
+    --timeout=60s || {
     log_error "ExternalSecret failed to create secret"
     kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml
     exit 2
