@@ -27,7 +27,7 @@ source "$SCRIPT_DIR/helpers.sh"
 NAMESPACE="intelligence-deepagents"
 IMAGE_NAME="agent-executor"
 IMAGE_TAG="ci-test"
-CLUSTER_NAME="deepagnets-preview"
+CLUSTER_NAME="zerotouch-preview"
 CLAIMS_DIR="$REPO_ROOT/platform/claims/intelligence-deepagents"
 EXTERNAL_SECRETS_DIR="$CLAIMS_DIR/external-secrets"
 
@@ -84,260 +84,99 @@ log_info "Namespace ready"
 # ============================================================================
 log_info "Step 4: Applying ExternalSecret for LLM keys..."
 
-LLM_KEYS_ES="$EXTERNAL_SECRETS_DIR/llm-keys-es.yaml"
+kubectl apply -f "$EXTERNAL_SECRETS_DIR/llm-keys-es.yaml"
 
-if [[ ! -f "$LLM_KEYS_ES" ]]; then
-    log_error "LLM keys ExternalSecret not found: $LLM_KEYS_ES"
-    exit 2
-fi
-
-log_info "Applying ExternalSecret: llm-keys-es.yaml"
-if ! kubectl apply -f "$LLM_KEYS_ES"; then
-    log_error "Failed to apply ExternalSecret"
-    exit 2
-fi
-
-# Wait for ExternalSecret to sync
-log_info "Waiting for ExternalSecret to sync (timeout: 120s)..."
-if ! kubectl wait externalsecret/agent-executor-llm-keys \
+log_info "Waiting for secret to be created (timeout: 120s)..."
+kubectl wait secret/agent-executor-llm-keys \
     -n "$NAMESPACE" \
-    --for=condition=Ready \
-    --timeout=120s 2>/dev/null; then
-    log_warn "ExternalSecret wait timed out, checking status..."
-    log_warn "ExternalSecret status:"
-    kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml || true
-    log_warn "Checking ClusterSecretStore:"
-    kubectl get clustersecretstore aws-parameter-store -o yaml || true
-    log_warn "Checking AWS credentials secret:"
-    kubectl get secret -n external-secrets aws-access-token || true
-    log_warn "Checking ESO pod logs:"
-    kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets --tail=50 || true
-fi
+    --for=jsonpath='{.data}' \
+    --timeout=120s || {
+    log_error "ExternalSecret failed to create secret"
+    kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml
+    exit 2
+}
 
-# Wait for the Kubernetes secret to be created
-log_info "Waiting for Kubernetes secret to be created..."
-RETRY_COUNT=0
-MAX_RETRIES=30
-while ! resource_exists "secret" "agent-executor-llm-keys" "$NAMESPACE"; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "Timeout waiting for secret agent-executor-llm-keys to be created"
-        kubectl get externalsecret -n "$NAMESPACE" agent-executor-llm-keys -o yaml || true
-        exit 2
-    fi
-    log_info "Waiting for secret... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep 2
-done
-
-log_info "Secret agent-executor-llm-keys created successfully"
+log_info "Secret created successfully"
 
 # ============================================================================
-# Step 5: Apply Claims in Sync-Wave Order
+# Step 5: Apply Database Claims
 # ============================================================================
-log_info "Step 5: Applying claims in sync-wave order..."
+log_info "Step 5: Applying database claims..."
 
-# Sync-wave 0: Database claims
-log_info "Applying sync-wave 0 claims (databases)..."
+kubectl apply -f "$CLAIMS_DIR/postgres-claim.yaml"
+kubectl apply -f "$CLAIMS_DIR/dragonfly-claim.yaml"
 
-POSTGRES_CLAIM="$CLAIMS_DIR/postgres-claim.yaml"
-DRAGONFLY_CLAIM="$CLAIMS_DIR/dragonfly-claim.yaml"
-
-if [[ ! -f "$POSTGRES_CLAIM" ]]; then
-    log_error "PostgreSQL claim not found: $POSTGRES_CLAIM"
-    exit 2
-fi
-
-if [[ ! -f "$DRAGONFLY_CLAIM" ]]; then
-    log_error "Dragonfly claim not found: $DRAGONFLY_CLAIM"
-    exit 2
-fi
-
-log_info "Applying PostgreSQL claim..."
-if ! kubectl apply -f "$POSTGRES_CLAIM"; then
-    log_error "Failed to apply PostgreSQL claim"
-    exit 2
-fi
-
-log_info "Applying Dragonfly claim..."
-if ! kubectl apply -f "$DRAGONFLY_CLAIM"; then
-    log_error "Failed to apply Dragonfly claim"
-    exit 2
-fi
-
-log_info "Database claims applied successfully"
+log_info "Database claims applied"
 
 # ============================================================================
 # Step 6: Wait for Database Connection Secrets
 # ============================================================================
-log_info "Step 6: Waiting for database connection secrets..."
+log_info "Step 6: Waiting for database connection secrets (timeout: 5min)..."
 
-# Wait for PostgreSQL connection secret
-log_info "Waiting for PostgreSQL connection secret..."
-RETRY_COUNT=0
-MAX_RETRIES=60  # 5 minutes (60 * 5s) for database provisioning
-while ! resource_exists "secret" "agent-executor-db-conn" "$NAMESPACE"; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "Timeout waiting for PostgreSQL connection secret"
-        log_error "PostgresInstance status:"
-        kubectl get postgresinstance -n "$NAMESPACE" agent-executor-db -o yaml || true
-        log_error "XPostgresInstance status:"
-        kubectl get xpostgresinstance -A || true
-        log_error "Crossplane Object resources:"
-        kubectl get object -A || true
-        log_error "Crossplane Provider status:"
-        kubectl get provider || true
-        log_error "ProviderConfig status:"
-        kubectl get providerconfig || true
-        log_error "CNPG Cluster status:"
-        kubectl get cluster -A || true
-        log_error "CNPG Cluster pods:"
-        kubectl get pods -A -l cnpg.io/cluster || true
-        log_error "Crossplane provider-kubernetes logs:"
-        kubectl logs -n crossplane-system -l pkg.crossplane.io/provider=provider-kubernetes --tail=50 || true
-        exit 3
-    fi
-    log_info "Waiting for PostgreSQL secret... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep 5
-done
+kubectl wait secret/agent-executor-db-conn \
+    -n "$NAMESPACE" \
+    --for=jsonpath='{.data}' \
+    --timeout=300s || {
+    log_error "PostgreSQL secret not created"
+    kubectl get postgresinstance -n "$NAMESPACE" agent-executor-db -o yaml
+    exit 3
+}
 
-log_info "PostgreSQL connection secret created"
+kubectl wait secret/agent-executor-cache-conn \
+    -n "$NAMESPACE" \
+    --for=jsonpath='{.data}' \
+    --timeout=300s || {
+    log_error "Dragonfly secret not created"
+    kubectl get dragonflyinstance -n "$NAMESPACE" agent-executor-cache -o yaml
+    exit 3
+}
 
-# Wait for Dragonfly connection secret
-log_info "Waiting for Dragonfly connection secret..."
-RETRY_COUNT=0
-MAX_RETRIES=60  # 5 minutes (60 * 5s) for database provisioning
-while ! resource_exists "secret" "agent-executor-cache-conn" "$NAMESPACE"; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "Timeout waiting for Dragonfly connection secret"
-        log_error "DragonflyInstance status:"
-        kubectl get dragonflyinstance -n "$NAMESPACE" agent-executor-cache -o yaml || true
-        log_error "XDragonflyInstance status:"
-        kubectl get xdragonflyinstance -A || true
-        log_error "Dragonfly pods:"
-        kubectl get pods -A -l app=dragonfly || true
-        exit 3
-    fi
-    log_info "Waiting for Dragonfly secret... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep 5
-done
-
-log_info "Dragonfly connection secret created"
-log_info "All database connection secrets ready"
+log_info "Database secrets ready"
 
 # ============================================================================
-# Step 7: Apply EventDrivenService Claim (Sync-wave 2)
+# Step 7: Apply EventDrivenService Claim
 # ============================================================================
 log_info "Step 7: Applying EventDrivenService claim..."
 
-DEPLOYMENT_CLAIM="$CLAIMS_DIR/agent-executor-deployment.yaml"
-
-if [[ ! -f "$DEPLOYMENT_CLAIM" ]]; then
-    log_error "EventDrivenService claim not found: $DEPLOYMENT_CLAIM"
-    exit 2
-fi
-
-# Patch the image reference to use our CI-built image
-log_info "Patching EventDrivenService claim to use CI image..."
 TEMP_CLAIM=$(mktemp)
 sed "s|image: ghcr.io/arun4infra/agent-executor:latest|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" \
-    "$DEPLOYMENT_CLAIM" > "$TEMP_CLAIM"
+    "$CLAIMS_DIR/agent-executor-deployment.yaml" | \
+sed '/imagePullSecrets:/,+1d' > "$TEMP_CLAIM"
 
-# Also remove imagePullSecrets since we're using a local image
-sed -i.bak '/imagePullSecrets:/,+1d' "$TEMP_CLAIM"
+kubectl apply -f "$TEMP_CLAIM"
+rm -f "$TEMP_CLAIM"
 
-log_info "Applying patched EventDrivenService claim..."
-if ! kubectl apply -f "$TEMP_CLAIM"; then
-    log_error "Failed to apply EventDrivenService claim"
-    rm -f "$TEMP_CLAIM" "$TEMP_CLAIM.bak"
-    exit 2
-fi
-
-rm -f "$TEMP_CLAIM" "$TEMP_CLAIM.bak"
-log_info "EventDrivenService claim applied successfully"
-
-# ============================================================================
-# Step 8: Wait for Deployment to be Created
-# ============================================================================
-log_info "Step 8: Waiting for Deployment to be created..."
-
-RETRY_COUNT=0
-MAX_RETRIES=30
-while ! resource_exists "deployment" "deepagents-runtime" "$NAMESPACE"; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "Timeout waiting for Deployment to be created"
-        kubectl get eventdrivenservice -n "$NAMESPACE" agent-executor -o yaml || true
-        exit 3
-    fi
-    log_info "Waiting for Deployment... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep 2
-done
+log_info "Waiting for deployment to be created (timeout: 60s)..."
+kubectl wait deployment/deepagents-runtime \
+    -n "$NAMESPACE" \
+    --for=condition=Available=False \
+    --timeout=60s || {
+    log_error "Deployment not created"
+    kubectl get eventdrivenservice -n "$NAMESPACE" agent-executor -o yaml
+    exit 3
+}
 
 log_info "Deployment created"
 
 # ============================================================================
-# Step 9: Wait for Pod to be Ready
+# Step 8: Wait for Pod to be Ready
 # ============================================================================
-log_info "Step 9: Waiting for agent-executor pod to be ready..."
+log_info "Step 8: Waiting for pod to be ready (timeout: 5min)..."
 
-log_info "Waiting for pod with label app.kubernetes.io/name=deepagents-runtime..."
-if ! kubectl wait pod \
+kubectl wait pod \
     -l app.kubernetes.io/name=deepagents-runtime \
     -n "$NAMESPACE" \
     --for=condition=Ready \
-    --timeout=600s; then
-    log_error "Pod did not become ready within timeout"
-    log_error "Pod status:"
-    kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime || true
-    log_error "Pod logs:"
-    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime --tail=50 || true
-    log_error "Pod events:"
-    kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20 || true
+    --timeout=300s || {
+    log_error "Pod not ready"
+    kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime
+    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime --tail=50
     exit 4
-fi
+}
 
-log_info "Pod is ready"
+log_info "Pod ready"
 
-# ============================================================================
-# Step 10: Verify All Resources
-# ============================================================================
-log_info "Step 10: Verifying all resources..."
-
-# Verify namespace
-log_info "Verifying namespace..."
-kubectl get namespace "$NAMESPACE"
-
-# Verify secrets
-log_info "Verifying secrets..."
-kubectl get secret -n "$NAMESPACE" agent-executor-llm-keys
-kubectl get secret -n "$NAMESPACE" agent-executor-db-conn
-kubectl get secret -n "$NAMESPACE" agent-executor-cache-conn
-
-# Verify claims
-log_info "Verifying Crossplane claims..."
-kubectl get postgresinstance -n "$NAMESPACE" agent-executor-db
-kubectl get dragonflyinstance -n "$NAMESPACE" agent-executor-cache
-kubectl get eventdrivenservice -n "$NAMESPACE" agent-executor
-
-# Verify deployment
-log_info "Verifying deployment..."
-kubectl get deployment -n "$NAMESPACE" deepagents-runtime
-
-# Verify pod
-log_info "Verifying pod..."
-kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime
-
-# Verify KEDA ScaledObject if it exists
-log_info "Verifying KEDA ScaledObject..."
-if kubectl get crd scaledobjects.keda.sh >/dev/null 2>&1; then
-    kubectl get scaledobject -n "$NAMESPACE" 2>/dev/null || log_warn "No KEDA ScaledObjects found"
-fi
-
-log_info "✓ Service deployment completed successfully!"
-log_info "Namespace: $NAMESPACE"
-log_info "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-log_info "Pod: $(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].metadata.name}')"
+log_info "✓ Service deployed successfully"
+log_info "Namespace: $NAMESPACE | Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 
 exit 0

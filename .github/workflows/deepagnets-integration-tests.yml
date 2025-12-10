@@ -76,35 +76,27 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Install system dependencies
+      - name: Bootstrap Platform Preview Environment
+        working-directory: zerotouch-platform
         run: |
-          # Install Kind
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          
-          # Install kubectl
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/kubectl
-          
-          # Install Helm
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          
-          # Verify installations
-          kind version
-          kubectl version --client
-          helm version
+          chmod +x scripts/bootstrap/01-master-bootstrap.sh
+          ./scripts/bootstrap/01-master-bootstrap.sh --mode preview
       
-      - name: Run integration tests
+      - name: Deploy Service and Run Tests
         id: run_tests
         working-directory: deepagents-runtime
         env:
           ZEROTOUCH_PLATFORM_DIR: ${{ github.workspace }}/zerotouch-platform
-          PLATFORM_BRANCH: ${{ inputs.platform_branch || 'feature/agent-executor' }}
         run: |
-          chmod +x scripts/ci/run-integration-tests.sh
-          ./scripts/ci/run-integration-tests.sh
+          chmod +x scripts/ci/deploy-and-test.sh
+          ./scripts/ci/deploy-and-test.sh
+      
+      - name: Cleanup Preview Environment
+        if: always()
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/cleanup-preview.sh
+          ./scripts/bootstrap/cleanup-preview.sh
       
       - name: Upload test results
         if: always()
