@@ -5,14 +5,20 @@ set -euo pipefail
 # Tier 2 CI Script: Build Docker Image
 # ==============================================================================
 # Purpose: Build Docker image for testing (Kind) or production (Registry push)
-# Usage: ./scripts/ci/build.sh [--mode=test|production]
-# Called by: GitHub Actions workflows
+# Usage: ./scripts/ci/build.sh [--mode=test|production|local]
+# Called by: GitHub Actions workflows or local development
+#
+# Modes:
+#   test       - Build and load into Kind cluster (default)
+#   production - Build multi-arch and push to registry (requires GITHUB_SHA, GITHUB_REF_NAME)
+#   local      - Build multi-arch and push to registry using local git info
 # ==============================================================================
 
 # Configuration
 SERVICE_NAME="deepagents-runtime"
 REGISTRY="ghcr.io/arun4infra"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PLATFORM="linux/amd64"  # Target platform for production builds
 
 # Color codes
 RED='\033[0;31m'
@@ -39,8 +45,8 @@ for arg in "$@"; do
 done
 
 # Validate mode
-if [[ "$MODE" != "test" && "$MODE" != "production" ]]; then
-    log_error "Invalid mode: $MODE. Use 'test' or 'production'"
+if [[ "$MODE" != "test" && "$MODE" != "production" && "$MODE" != "local" ]]; then
+    log_error "Invalid mode: $MODE. Use 'test', 'production', or 'local'"
     exit 1
 fi
 
@@ -80,74 +86,86 @@ if [[ "$MODE" == "test" ]]; then
     log_success "Image loaded successfully into Kind cluster"
     log_success "Build and load complete: ${SERVICE_NAME}:${IMAGE_TAG}"
 
-elif [[ "$MODE" == "production" ]]; then
+elif [[ "$MODE" == "production" || "$MODE" == "local" ]]; then
     # ========================================================================
-    # PRODUCTION MODE: Build and push to registry
+    # PRODUCTION/LOCAL MODE: Build multi-arch and push to registry
     # ========================================================================
     
-    # Validate required environment variables
-    REQUIRED_VARS=("GITHUB_SHA" "GITHUB_REF_NAME")
-    MISSING_VARS=()
-    
-    for var in "${REQUIRED_VARS[@]}"; do
-        if [ -z "${!var:-}" ]; then
-            MISSING_VARS+=("$var")
+    if [[ "$MODE" == "production" ]]; then
+        # Validate required environment variables for CI
+        REQUIRED_VARS=("GITHUB_SHA" "GITHUB_REF_NAME")
+        MISSING_VARS=()
+        
+        for var in "${REQUIRED_VARS[@]}"; do
+            if [ -z "${!var:-}" ]; then
+                MISSING_VARS+=("$var")
+            fi
+        done
+        
+        if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+            log_error "Missing required environment variables for production mode:"
+            printf '  - %s\n' "${MISSING_VARS[@]}"
+            exit 1
         fi
-    done
-    
-    if [ ${#MISSING_VARS[@]} -gt 0 ]; then
-        log_error "Missing required environment variables for production mode:"
-        printf '  - %s\n' "${MISSING_VARS[@]}"
-        exit 1
+        
+        GIT_SHA="${GITHUB_SHA}"
+        GIT_REF="${GITHUB_REF_NAME}"
+    else
+        # Local mode: use git commands to get info
+        log_info "Running in local mode - using git to determine version info"
+        GIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+        GIT_REF=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     fi
     
     # Determine image tags based on git ref
     TAGS=()
-    SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+    SHORT_SHA=$(echo "${GIT_SHA}" | cut -c1-7)
     
-    if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+    if [[ "${GIT_REF}" == "main" ]]; then
         # Main branch: tag with branch-sha and latest
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:main-${SHORT_SHA}")
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:latest")
-    elif [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+    elif [[ "${GIT_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
         # Version tag: use semantic versioning
-        VERSION="${GITHUB_REF_NAME#v}"  # Remove 'v' prefix
+        VERSION="${GIT_REF#v}"  # Remove 'v' prefix
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION}")
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION%.*}")  # Major.minor
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION%%.*}") # Major only
     else
         # Feature branch or PR: tag with branch-sha
-        SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        SAFE_BRANCH=$(echo "${GIT_REF}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         TAGS+=("${REGISTRY}/${SERVICE_NAME}:${SAFE_BRANCH}-${SHORT_SHA}")
+        # Also tag as latest for feature branches in local mode
+        if [[ "$MODE" == "local" ]]; then
+            TAGS+=("${REGISTRY}/${SERVICE_NAME}:latest")
+        fi
     fi
     
-    # Build Docker image with all tags
-    log_info "Building Docker image for production..."
-    TAG_ARGS=()
+    # Build Docker image with all tags using buildx for multi-arch
+    log_info "Building Docker image for ${PLATFORM}..."
+    TAG_ARGS=""
     for tag in "${TAGS[@]}"; do
-        TAG_ARGS+=("-t" "$tag")
+        TAG_ARGS="${TAG_ARGS} -t ${tag}"
     done
     
-    docker build \
+    # Use buildx for cross-platform builds
+    docker buildx build \
+        --platform "${PLATFORM}" \
         -f Dockerfile \
-        "${TAG_ARGS[@]}" \
+        ${TAG_ARGS} \
         --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-        --build-arg GIT_COMMIT="${GITHUB_SHA}" \
+        --build-arg GIT_COMMIT="${GIT_SHA}" \
+        --push \
         .
     
-    log_success "Docker image built successfully"
-    
-    # Push all tags to registry
-    log_info "Pushing images to registry..."
+    log_success "Docker image built and pushed successfully"
+    log_info "Pushed tags:"
     for tag in "${TAGS[@]}"; do
-        log_info "Pushing: ${tag}"
-        docker push "$tag"
+        echo "  - ${tag}"
     done
     
-    log_success "All images pushed successfully"
-    
-    # Update deployment manifest if on main branch
-    if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+    # Update deployment manifest if on main branch (production mode only)
+    if [[ "$MODE" == "production" && "${GIT_REF}" == "main" ]]; then
         log_info "Updating deployment manifest for main branch..."
         
         DEPLOYMENT_FILE="platform/claims/intelligence-deepagents/deepagents-runtime-deployment.yaml"
