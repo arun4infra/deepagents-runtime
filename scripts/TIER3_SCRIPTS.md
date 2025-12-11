@@ -38,22 +38,36 @@ scripts/
 
 ### `ci/build.sh`
 
-**Purpose:** Build Docker image and load into Kind cluster for testing.
+**Purpose:** Build Docker image for testing (Kind) or production (Registry push).
 
 **Usage:**
 ```bash
-# Called by GitHub Actions workflow
-./scripts/ci/build.sh
+# Test mode (integration testing)
+./scripts/ci/build.sh --mode=test
+
+# Production mode (registry push)
+./scripts/ci/build.sh --mode=production
 ```
 
-**Environment Variables:**
-- None required (uses fixed values for CI testing)
+**Modes:**
+- **`test`**: Builds image and loads into Kind cluster for integration testing
+- **`production`**: Builds image and pushes to GitHub Container Registry
 
-**Output:**
+**Environment Variables:**
+- `GITHUB_SHA` (required for production): Git commit SHA
+- `GITHUB_REF_NAME` (required for production): Git branch or tag name
+- `GITHUB_OUTPUT` (optional): GitHub Actions output file
+
+**Output (Test Mode):**
 - Builds Docker image: `deepagents-runtime:ci-test`
 - Loads image into Kind cluster: `zerotouch-preview`
 
-**Called by:** GitHub Actions workflow
+**Output (Production Mode):**
+- Builds multi-platform Docker image
+- Pushes to `ghcr.io/arun4infra/deepagents-runtime` with appropriate tags
+- Updates deployment manifest for main branch
+
+**Called by:** GitHub Actions workflows
 
 ### `ci/deploy.sh`
 
