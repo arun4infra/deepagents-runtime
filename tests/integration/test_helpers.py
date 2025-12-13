@@ -47,27 +47,68 @@ TYPICAL_GUARANTEES = {
 # ARTIFACT STORAGE
 # ============================================================================
 
+# Global variable to store the current test run directory
+_current_test_run_dir: Path = None
+
+
 def get_output_dir() -> Path:
-    """Get the outputs directory for test artifacts."""
+    """
+    Get the outputs directory for test artifacts.
+    
+    Returns the base outputs directory (not the run-specific subdirectory).
+    Use get_test_run_dir() to get the current run's directory.
+    """
     output_dir = Path(__file__).parent / "outputs"
     output_dir.mkdir(exist_ok=True)
     return output_dir
 
 
-def save_artifact(filename: str, content: Any, as_json: bool = True) -> Path:
+def get_test_run_dir(test_id: str = None) -> Path:
     """
-    Save artifact to outputs directory.
+    Get or create the test run directory for the current test execution.
+    
+    All artifacts for a single test run are stored in a subdirectory
+    named run_{timestamp}/ for easy organization and cleanup.
     
     Args:
-        filename: Name of the file (without directory)
+        test_id: Optional test ID (timestamp). If not provided, generates a new one.
+        
+    Returns:
+        Path to the test run directory
+    """
+    global _current_test_run_dir
+    
+    if _current_test_run_dir is None:
+        if test_id is None:
+            test_id = generate_test_id()
+        
+        output_dir = get_output_dir()
+        _current_test_run_dir = output_dir / f"run_{test_id}"
+        _current_test_run_dir.mkdir(exist_ok=True)
+    
+    return _current_test_run_dir
+
+
+def reset_test_run_dir():
+    """Reset the test run directory (called at start of each test)."""
+    global _current_test_run_dir
+    _current_test_run_dir = None
+
+
+def save_artifact(filename: str, content: Any, as_json: bool = True) -> Path:
+    """
+    Save artifact to the current test run directory.
+    
+    Args:
+        filename: Name of the file (without directory or timestamp prefix)
         content: Content to save (dict/list for JSON, str for text)
         as_json: If True, save as JSON with indentation
         
     Returns:
         Path to saved file
     """
-    output_dir = get_output_dir()
-    filepath = output_dir / filename
+    run_dir = get_test_run_dir()
+    filepath = run_dir / filename
     
     if as_json:
         with open(filepath, 'w') as f:
@@ -82,6 +123,127 @@ def save_artifact(filename: str, content: Any, as_json: bool = True) -> Path:
 def generate_test_id() -> str:
     """Generate unique test ID based on timestamp."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def load_definition_with_files(definition_path: Path) -> Dict[str, Any]:
+    """
+    Load agent definition from JSON file and replace placeholders with content
+    from corresponding files:
+    - system_prompt: loaded from prompts/{node_id}.md
+    - tool scripts: loaded from tools/{tool_name}.py
+    - schema placeholders: injected from schema.json and schema_example.json
+    
+    This helper is specifically for test definitions to enable efficient debugging
+    by keeping prompts and tool scripts in separate, readable files.
+    
+    Args:
+        definition_path: Path to the definition.json file
+        
+    Returns:
+        Dictionary with system_prompts and tool scripts loaded from files
+        
+    Raises:
+        FileNotFoundError: If a prompt or tool file is missing
+        ValueError: If definition structure is invalid
+    """
+    # Load the base definition
+    with open(definition_path) as f:
+        definition = json.load(f)
+    
+    # Get the prompts and tools directories (siblings to definition.json)
+    prompts_dir = definition_path.parent / "prompts"
+    tools_dir = definition_path.parent / "tools"
+    
+    if not prompts_dir.exists():
+        raise FileNotFoundError(f"Prompts directory not found: {prompts_dir}")
+    
+    if not tools_dir.exists():
+        raise FileNotFoundError(f"Tools directory not found: {tools_dir}")
+    
+    # Load schema files for injection into tool scripts
+    schema_path = definition_path.parent / "schema.json"
+    schema_example_path = definition_path.parent / "schema_example.json"
+    
+    schema_json = None
+    schema_example_json = None
+    
+    if schema_path.exists():
+        with open(schema_path) as f:
+            schema_json = f.read()
+    
+    if schema_example_path.exists():
+        with open(schema_example_path) as f:
+            schema_example_json = f.read()
+    
+    # Process tool_definitions
+    if "tool_definitions" in definition:
+        for tool_def in definition["tool_definitions"]:
+            if "runtime" not in tool_def or "script" not in tool_def["runtime"]:
+                continue
+            
+            # Check if this is a placeholder that needs to be replaced
+            script_value = tool_def["runtime"]["script"]
+            if script_value.startswith("loaded from tools/") and script_value.endswith(" file"):
+                tool_name = tool_def.get("name")
+                if not tool_name:
+                    raise ValueError(f"Tool definition missing 'name' field: {tool_def}")
+                
+                # Load the corresponding tool file
+                tool_file = tools_dir / f"{tool_name}.py"
+                if not tool_file.exists():
+                    raise FileNotFoundError(
+                        f"Tool file not found for tool '{tool_name}': {tool_file}"
+                    )
+                
+                # Replace placeholder with file content
+                with open(tool_file) as f:
+                    script_content = f.read()
+                
+                # Inject schema content if placeholders exist
+                if schema_json and "__SCHEMA_JSON__" in script_content:
+                    # Parse and re-serialize to ensure valid Python dict literal
+                    schema_dict = json.loads(schema_json)
+                    script_content = script_content.replace(
+                        "__SCHEMA_JSON__", 
+                        json.dumps(schema_dict)
+                    )
+                
+                if schema_example_json and "__SCHEMA_EXAMPLE_JSON__" in script_content:
+                    # Use json.dumps to properly escape the string
+                    script_content = script_content.replace(
+                        "__SCHEMA_EXAMPLE_JSON__", 
+                        json.dumps(schema_example_json.strip())
+                    )
+                
+                tool_def["runtime"]["script"] = script_content
+    
+    # Process nodes (system_prompts)
+    if "nodes" not in definition:
+        raise ValueError("Definition must contain 'nodes' array")
+    
+    for node in definition["nodes"]:
+        if "config" not in node or "system_prompt" not in node["config"]:
+            continue
+        
+        # Check if this is a placeholder that needs to be replaced
+        prompt_value = node["config"]["system_prompt"]
+        if prompt_value == "loaded from file" or prompt_value.startswith("loaded from prompts/"):
+            node_id = node.get("id")
+            if not node_id:
+                raise ValueError(f"Node missing 'id' field: {node}")
+            
+            # Load the corresponding prompt file
+            prompt_file = prompts_dir / f"{node_id}.md"
+            if not prompt_file.exists():
+                raise FileNotFoundError(
+                    f"Prompt file not found for node '{node_id}': {prompt_file}"
+                )
+            
+            # Replace placeholder with file content
+            with open(prompt_file) as f:
+                node["config"]["system_prompt"] = f.read()
+    
+    return definition
 
 
 # ============================================================================
@@ -328,6 +490,73 @@ def extract_specialist_timeline(events: List[Dict[str, Any]]) -> List[Dict[str, 
 
 
 # ============================================================================
+# WORKFLOW RESULT VALIDATION
+# ============================================================================
+
+def validate_workflow_result(result: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """
+    Validate that a workflow execution result is successful and complete.
+    
+    This function checks for:
+    1. No HALT errors in the output
+    2. Valid definition.json was generated
+    3. Definition contains required structure (nodes, edges)
+    
+    Args:
+        result: The result dictionary from CloudEvent data
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+    
+    # Check 1: Validate status
+    status = result.get("status")
+    if status != "completed":
+        errors.append(f"Result status is '{status}', expected 'completed'")
+    
+    # Check 2: Check for HALT errors
+    output = result.get("output", "")
+    if output.startswith("HALT:"):
+        errors.append(f"Workflow halted with error: {output}")
+        # If we have a HALT, the rest of the checks will likely fail, so return early
+        return False, errors
+    
+    # Check 3: Validate final_state exists
+    final_state = result.get("final_state", {})
+    if not final_state:
+        errors.append("No final_state found in result")
+        return False, errors
+    
+    # Check 4: Validate definition exists
+    definition = final_state.get("definition", {})
+    if not definition:
+        errors.append("No definition object found in final_state")
+        return False, errors
+    
+    # Check 5: Validate definition structure
+    nodes = definition.get("nodes", [])
+    if len(nodes) == 0:
+        errors.append("Definition contains no nodes")
+    
+    edges = definition.get("edges", [])
+    if len(edges) == 0:
+        errors.append("Definition contains no edges")
+    
+    # Check 6: Validate definition has required fields
+    if "name" not in definition:
+        errors.append("Definition missing 'name' field")
+    
+    if "version" not in definition:
+        errors.append("Definition missing 'version' field")
+    
+    if "tool_definitions" not in definition:
+        errors.append("Definition missing 'tool_definitions' field")
+    
+    return len(errors) == 0, errors
+
+
+# ============================================================================
 # SUMMARY GENERATION
 # ============================================================================
 
@@ -418,12 +647,30 @@ def generate_checkpoint_summary(checkpoints: List[Dict[str, Any]]) -> str:
         "=" * 80,
         f"Total: {len(checkpoints)} checkpoints for thread_id: {thread_id}",
         "",
-        "Checkpoint Timeline:",
     ]
     
-    for i, checkpoint in enumerate(checkpoints, 1):
-        checkpoint_id = checkpoint["checkpoint_id"]
-        summary_lines.append(f"{i}. {checkpoint_id}")
+    # Only show checkpoint timeline if there are a reasonable number of checkpoints
+    if len(checkpoints) <= 20:
+        summary_lines.append("Checkpoint Timeline:")
+        for i, checkpoint in enumerate(checkpoints, 1):
+            checkpoint_id = checkpoint["checkpoint_id"]
+            summary_lines.append(f"{i}. {checkpoint_id}")
+    else:
+        # For large numbers of checkpoints, show first 5 and last 5
+        summary_lines.extend([
+            "Checkpoint Timeline (showing first 5 and last 5):",
+            "First 5 checkpoints:"
+        ])
+        for i in range(min(5, len(checkpoints))):
+            checkpoint_id = checkpoints[i]["checkpoint_id"]
+            summary_lines.append(f"{i+1}. {checkpoint_id}")
+        
+        if len(checkpoints) > 10:
+            summary_lines.append("...")
+            summary_lines.append("Last 5 checkpoints:")
+            for i in range(max(0, len(checkpoints) - 5), len(checkpoints)):
+                checkpoint_id = checkpoints[i]["checkpoint_id"]
+                summary_lines.append(f"{i+1}. {checkpoint_id}")
     
     summary_lines.extend([
         "",

@@ -230,13 +230,18 @@ def sample_agent_definition() -> Dict[str, Any]:
 
     This fixture loads the actual mock definition used by the application,
     ensuring that integration tests validate real graph building and execution.
+    
+    System prompts are loaded from .md files in tests/mock/prompts/
+    Tool scripts are loaded from .py files in tests/mock/tools/
+    for better readability and debugging.
 
     Returns:
-        Dictionary containing agent definition from definition.json
+        Dictionary containing agent definition with prompts and tools loaded from files
     """
+    from tests.integration.test_helpers import load_definition_with_files
+    
     definition_path = Path(__file__).parent.parent / "mock" / "definition.json"
-    with open(definition_path) as f:
-        return json.load(f)
+    return load_definition_with_files(definition_path)
 
 
 @pytest.fixture
@@ -244,15 +249,27 @@ def sample_job_execution_event(sample_agent_definition: Dict[str, Any]) -> Dict[
     """
     Sample JobExecutionEvent for testing.
 
+    Generates unique trace_id and job_id for each test run to avoid checkpoint
+    collisions when using PostgreSQL checkpointer with the same thread_id.
+
     Args:
         sample_agent_definition: Agent definition fixture
 
     Returns:
-        Dictionary containing JobExecutionEvent data
+        Dictionary containing JobExecutionEvent data with unique IDs
     """
+    import uuid
+    
+    # Generate unique IDs for each test run to prevent checkpoint state pollution
+    # This ensures each test starts with a clean state instead of resuming from
+    # previous checkpoints, which would cause the PatchToolCallsMiddleware to
+    # detect dangling tool calls and create an infinite loop
+    unique_job_id = f"test-job-{uuid.uuid4()}"
+    unique_trace_id = f"test-trace-{uuid.uuid4()}"
+    
     return {
-        "trace_id": "test-trace-123",
-        "job_id": "test-job-456",
+        "trace_id": unique_trace_id,
+        "job_id": unique_job_id,
         "agent_definition": sample_agent_definition,
         "input_payload": {
             "messages": [
@@ -333,6 +350,66 @@ async def test_cloudevent_processing_end_to_end_success(
         - Event Reference: agent-executor-event-example.md
         - Minimum Guarantees: agent-executor-minimum-events.md
     """
+    # ================================================================
+    # LOG CAPTURE SETUP - Capture ALL logs to test run directory
+    # ================================================================
+    import logging
+    import sys
+    from datetime import datetime
+    from .test_helpers import reset_test_run_dir, get_test_run_dir, generate_test_id
+    
+    # Reset test run directory for this test execution
+    reset_test_run_dir()
+    
+    # Generate unique test ID and create run directory
+    test_id = generate_test_id()
+    test_run_dir = get_test_run_dir(test_id)
+    
+    # Create log file in the test run directory
+    log_filename = "test_run.log"
+    log_filepath = test_run_dir / log_filename
+    
+    # Open log file for writing
+    log_file = open(log_filepath, 'w')
+    
+    # Store original stdout/stderr
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    
+    # Create a tee class to write to both console and file
+    class TeeStream:
+        def __init__(self, original_stream, log_file):
+            self.original_stream = original_stream
+            self.log_file = log_file
+            
+        def write(self, text):
+            self.original_stream.write(text)
+            self.original_stream.flush()
+            self.log_file.write(text)
+            self.log_file.flush()
+            
+        def flush(self):
+            self.original_stream.flush()
+            self.log_file.flush()
+    
+    # Redirect stdout and stderr to capture all output
+    sys.stdout = TeeStream(original_stdout, log_file)
+    sys.stderr = TeeStream(original_stderr, log_file)
+    
+    # Also setup Python logging to go to the file
+    file_handler = logging.FileHandler(log_filepath, mode='a')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Add to root logger
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.DEBUG)
+    
+    print(f"\n[LOG_CAPTURE] All logs will be saved to: {log_filepath}")
+    print("=" * 80)
+    
     print("\n[DEBUG] test_cloudevent_processing_end_to_end_success: STARTING")
     
     # Track execution start time
@@ -341,12 +418,6 @@ async def test_cloudevent_processing_end_to_end_success(
     # Extract job execution event from CloudEvent for validation
     sample_job_execution_event = sample_cloudevent["data"]
     print(f"[DEBUG] Job ID: {sample_job_execution_event.get('job_id')}")
-
-    # Set ALL required environment variables for FastAPI app startup
-    # Use TEST_* env vars if set (from test-talos.sh), otherwise use defaults for Docker Compose
-    print("[DEBUG] Setting environment variables...")
-    monkeypatch.setenv("DISABLE_VAULT_AUTH", "true")
-    monkeypatch.setenv("NATS_URL", os.environ.get("TEST_NATS_URL", "nats://localhost:14222"))
 
     # PostgreSQL configuration - use TEST_* env vars if available
     pg_host = os.environ.get("TEST_POSTGRES_HOST", "localhost")
@@ -371,11 +442,17 @@ async def test_cloudevent_processing_end_to_end_success(
     # LLM API key - Load from .env file for actual LLM calls
     from dotenv import load_dotenv
     load_dotenv(override=True)
+    
+    # CRITICAL: Override NATS_URL after .env loading to use test environment
+    # The .env file contains nats://nats.nats.svc:4222 which doesn't exist in test env
+    test_nats_url = os.environ.get("TEST_NATS_URL", "nats://localhost:14222")
+    monkeypatch.setenv("NATS_URL", test_nats_url)
+    print(f"[DEBUG] CRITICAL: Set NATS_URL to {test_nats_url} (overriding .env file)")
 
     # Subscribe to Redis channel BEFORE execution to capture all events
     print("[DEBUG] Setting up Redis pub/sub...")
     pubsub = redis_client.pubsub()
-    channel = "langgraph:stream:test-job-456"
+    channel = f"langgraph:stream:{sample_job_execution_event['job_id']}"
     pubsub.subscribe(channel)
     print(f"[DEBUG] Subscribed to Redis channel: {channel}")
 
@@ -408,22 +485,39 @@ async def test_cloudevent_processing_end_to_end_success(
     nc, js = nats_client
     nats_messages = []
     
+    # Get the expected job_id for filtering
+    expected_job_id = sample_job_execution_event["job_id"]
+    
     async def nats_message_handler(msg):
-        """Capture NATS messages."""
+        """Capture NATS messages, filtering for our specific job_id."""
         data = json.loads(msg.data.decode())
-        nats_messages.append(data)
+        # Only capture messages for our specific job_id
+        if data.get("subject") == expected_job_id:
+            nats_messages.append(data)
         await msg.ack()
     
     # Subscribe to agent.status.completed subject
+    # Use a unique consumer name per test run to avoid stale message issues
     import asyncio
-    print("[DEBUG] Creating NATS pull subscription for agent.status.completed...")
-    sub = await js.pull_subscribe("agent.status.completed", "test-consumer")
+    import uuid
+    unique_consumer_name = f"test-consumer-{uuid.uuid4().hex[:8]}"
+    print(f"[DEBUG] Creating NATS pull subscription for agent.status.completed with consumer: {unique_consumer_name}...")
+    
+    # Purge old messages from the stream before subscribing
+    try:
+        await js.purge_stream("AGENT_STATUS")
+        print("[DEBUG] Purged AGENT_STATUS stream")
+    except Exception as e:
+        print(f"[DEBUG] Could not purge stream (may not exist yet): {e}")
+    
+    sub = await js.pull_subscribe("agent.status.completed", unique_consumer_name)
     print("[DEBUG] NATS subscription created")
     
     # Create task to fetch NATS messages in background
     async def fetch_nats_messages():
         try:
-            msgs = await sub.fetch(batch=1, timeout=10)
+            # Fetch multiple messages in case there are stale ones
+            msgs = await sub.fetch(batch=10, timeout=15)
             for msg in msgs:
                 await nats_message_handler(msg)
         except asyncio.TimeoutError:
@@ -466,8 +560,8 @@ async def test_cloudevent_processing_end_to_end_success(
 
         # Wait for event capture to complete
         # The agent needs time to execute with real LLM calls
-        # Wait for "end" event or timeout after 60 seconds
-        max_wait = 60
+        # Wait for "end" event or timeout after 180 seconds (3 minutes max)
+        max_wait = 180
         waited = 0
         while waited < max_wait:
             if any(e.get("event_type") == "end" for e in streaming_events):
@@ -478,12 +572,32 @@ async def test_cloudevent_processing_end_to_end_success(
         
         if waited >= max_wait:
             print(f"⚠ Timeout after {max_wait} seconds waiting for completion")
+            assert False, f"Test failed: Agent execution took longer than {max_wait} seconds (3 minutes). This indicates a performance issue or infinite loop."
         
         # Give a bit more time for final events to be captured
         time.sleep(2)
         
-        # Wait for NATS message to be received
+        # Wait for NATS message to be received - retry if needed
         await nats_task
+        
+        # If we didn't get our message yet, try fetching again
+        # (the CloudEvent may be published after the HTTP response)
+        if not nats_messages:
+            print("[DEBUG] No NATS message received yet, retrying fetch...")
+            for retry in range(5):
+                try:
+                    msgs = await sub.fetch(batch=10, timeout=5)
+                    for msg in msgs:
+                        data = json.loads(msg.data.decode())
+                        if data.get("subject") == expected_job_id:
+                            nats_messages.append(data)
+                        await msg.ack()
+                    if nats_messages:
+                        print(f"[DEBUG] Found NATS message on retry {retry + 1}")
+                        break
+                except asyncio.TimeoutError:
+                    print(f"[DEBUG] NATS fetch retry {retry + 1} timed out")
+                    continue
         
         # Calculate total execution duration
         total_duration_s = time.time() - execution_start_time
@@ -497,31 +611,31 @@ async def test_cloudevent_processing_end_to_end_success(
             generate_checkpoint_summary,
             generate_cloudevent_summary,
             generate_execution_summary,
-            generate_test_id,
             save_artifact,
             validate_minimum_events,
             validate_specialist_order,
             validate_event_structure,
+            validate_workflow_result,
         )
         
-        # Generate unique test ID for artifacts
-        test_id = generate_test_id()
+        # Note: test_id was already generated at the start of the test
+        # All artifacts will be saved to the same run directory
 
         # ================================================================
         # ARTIFACT COLLECTION: Save ALL events to file
         # ================================================================
-        save_artifact(f"test_{test_id}_all_events.json", streaming_events, as_json=True)
+        save_artifact("all_events.json", streaming_events, as_json=True)
 
         # ================================================================
         # VALIDATION 2: PostgreSQL Checkpoint Validation
         # ================================================================
         # Query checkpoints written during execution
-        checkpoints = extract_checkpoints(postgres_connection, "test-job-456")
+        checkpoints = extract_checkpoints(postgres_connection, sample_job_execution_event["job_id"])
 
         # ================================================================
         # ARTIFACT COLLECTION: Save checkpoints to file
         # ================================================================
-        save_artifact(f"test_{test_id}_checkpoints.json", checkpoints, as_json=True)
+        save_artifact("checkpoints.json", checkpoints, as_json=True)
 
         # ================================================================
         # REQ 3.1: job_id MUST be used as thread_id (CRITICAL)
@@ -797,12 +911,50 @@ async def test_cloudevent_processing_end_to_end_success(
             f"Got: '{data['result']['status']}'"
 
         # ================================================================
+        # CRITICAL: Validate workflow completed successfully (not HALT)
+        # ================================================================
+        print("\n" + "="*80)
+        print("WORKFLOW RESULT VALIDATION")
+        print("="*80)
+        
+        is_valid, validation_errors = validate_workflow_result(data["result"])
+        
+        if not is_valid:
+            error_msg = "WORKFLOW EXECUTION FAILED:\n\n"
+            for i, error in enumerate(validation_errors, 1):
+                error_msg += f"{i}. {error}\n"
+            error_msg += "\nThis indicates the multi-agent workflow encountered errors and could not "
+            error_msg += "complete successfully. Common causes:\n"
+            error_msg += "  - Missing required specification files (e.g., requirements.md)\n"
+            error_msg += "  - Incomplete implementation plan from Impact Analysis Agent\n"
+            error_msg += "  - Logical errors detected by Multi-Agent Compiler Agent\n"
+            error_msg += "\nCheck the test logs and CloudEvent output for details."
+            
+            assert False, error_msg
+        
+        # Extract definition details for logging
+        final_state = data["result"].get("final_state", {})
+        definition = final_state.get("definition", {})
+        nodes = definition.get("nodes", [])
+        edges = definition.get("edges", [])
+        tool_definitions = definition.get("tool_definitions", [])
+        
+        print(f"✅ Workflow completed successfully (no HALT errors)")
+        print(f"✅ Valid definition.json generated:")
+        print(f"   - Name: {definition.get('name', 'N/A')}")
+        print(f"   - Version: {definition.get('version', 'N/A')}")
+        print(f"   - Nodes: {len(nodes)}")
+        print(f"   - Edges: {len(edges)}")
+        print(f"   - Tool Definitions: {len(tool_definitions)}")
+        print("="*80)
+
+        # ================================================================
         # ARTIFACT COLLECTION: Save CloudEvent and specialist timeline
         # ================================================================
-        save_artifact(f"test_{test_id}_cloudevent.json", cloudevent_json, as_json=True)
+        save_artifact("cloudevent.json", cloudevent_json, as_json=True)
         
         specialist_timeline = extract_specialist_timeline(streaming_events)
-        save_artifact(f"test_{test_id}_specialist_timeline.json", specialist_timeline, as_json=True)
+        save_artifact("specialist_timeline.json", specialist_timeline, as_json=True)
 
         # ================================================================
         # GENERATE AND PRINT EXECUTION SUMMARY
@@ -820,12 +972,26 @@ async def test_cloudevent_processing_end_to_end_success(
         
         # Save summary to file
         full_summary = f"{execution_summary}\n\n{checkpoint_summary}\n\n{cloudevent_summary}"
-        save_artifact(f"test_{test_id}_summary.txt", full_summary, as_json=False)
+        save_artifact("summary.txt", full_summary, as_json=False)
         
         # Print ONLY summary to stdout (not all events)
         print("\n" + execution_summary)
         print("\n" + checkpoint_summary)
         print("\n" + cloudevent_summary)
+        
+        print(f"\n[LOG_CAPTURE] Complete test logs saved to: {log_filepath}")
+        
+        # ================================================================
+        # LOG CAPTURE CLEANUP
+        # ================================================================
+        # Restore original stdout/stderr
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        
+        # Close log file
+        log_file.close()
+        
+        print(f"[LOG_CAPTURE] Logs saved to: {log_filepath}")
 
 
 @pytest.mark.skip(reason="Failure test needs to be reimplemented for NATS architecture")

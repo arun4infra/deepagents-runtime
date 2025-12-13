@@ -55,14 +55,14 @@ except ImportError:
     )
 
 # Import service components
-from agent_executor.core.builder import GraphBuilder
-from agent_executor.core.executor import ExecutionManager
-from agent_executor.models.events import JobExecutionEvent
-from agent_executor.services.cloudevents import CloudEventEmitter
-from agent_executor.services.redis import RedisClient
+from core.builder import GraphBuilder
+from core.executor import ExecutionManager
+from models.events import JobExecutionEvent
+from services.cloudevents import CloudEventEmitter
+from services.redis import RedisClient
 
 # Import observability components
-from agent_executor.observability.metrics import (
+from observability.metrics import (
     agent_executor_jobs_total,
     agent_executor_job_duration_seconds,
     get_metrics
@@ -266,7 +266,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Initialize NATS consumer
         logger.info("initializing_nats_consumer")
-        from agent_executor.services.nats_consumer import NATSConsumer
+        from services.nats_consumer import NATSConsumer
         
         _nats_consumer = NATSConsumer(
             nats_url=os.getenv("NATS_URL", "nats://nats.nats.svc:4222"),

@@ -15,7 +15,7 @@ from unittest.mock import Mock, MagicMock, patch
 from langchain_core.tools import BaseTool, tool as langchain_tool
 from langchain_core.runnables import Runnable
 
-from agent_executor.core import (
+from core import (
     GraphBuilder,
     GraphBuilderError,
     ToolLoadingError,

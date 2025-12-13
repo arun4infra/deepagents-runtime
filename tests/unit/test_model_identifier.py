@@ -9,7 +9,7 @@ References:
 """
 
 import pytest
-from agent_executor.core import create_model_identifier
+from core import create_model_identifier
 
 
 class TestModelIdentifier:

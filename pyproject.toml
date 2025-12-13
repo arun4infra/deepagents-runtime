@@ -40,10 +40,12 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.14.0",
     "pytest-cov>=4.1.0",
+    "pytest-timeout>=2.3.0",
     "black>=24.1.1",
     "ruff>=0.1.13",
     "mypy>=1.8.0",
     "types-redis>=4.6.0",
+    "langgraph-cli[inmem]>=0.4.4",
 ]
 
 [project.scripts]
@@ -69,7 +71,8 @@ addopts = [
     "--strict-markers",
     "--cov=agent_executor",
     "--cov-report=term-missing",
-    "--cov-report=html"
+    "--cov-report=html",
+    "--timeout=300"
 ]
 
 [tool.black]

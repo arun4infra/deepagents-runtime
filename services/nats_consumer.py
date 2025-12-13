@@ -32,11 +32,11 @@ from nats.js.api import ConsumerConfig
 import structlog
 from pydantic import ValidationError
 
-from agent_executor.core.builder import GraphBuilder
-from agent_executor.core.executor import ExecutionManager
-from agent_executor.models.events import JobExecutionEvent
-from agent_executor.services.cloudevents import CloudEventEmitter
-from agent_executor.observability.metrics import (
+from core.builder import GraphBuilder
+from core.executor import ExecutionManager
+from models.events import JobExecutionEvent
+from services.cloudevents import CloudEventEmitter
+from observability.metrics import (
     agent_executor_nats_messages_processed_total,
     agent_executor_nats_messages_failed_total
 )
@@ -134,8 +134,8 @@ class NATSConsumer:
         try:
             logger.info("connecting_to_nats", nats_url=self.nats_url)
             
-            # Connect to NATS
-            self.nc = await nats.connect(self.nats_url)
+            # Connect to NATS with timeout to prevent hanging
+            self.nc = await nats.connect(self.nats_url, connect_timeout=10)
             self.js = self.nc.jetstream()
             
             logger.info("nats_connected", nats_url=self.nats_url)

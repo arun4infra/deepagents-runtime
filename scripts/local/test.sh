@@ -85,8 +85,7 @@ if [ -n "${TEST_DIR}" ]; then
         --tb=short \
         --cov=agent_executor \
         --cov-report=term-missing \
-        --cov-report=html \
-        --timeout=60
+        --cov-report=html
     
     EXIT_CODE=$?
     
@@ -179,7 +178,6 @@ else
             -v \
             --color=yes \
             --tb=short \
-            --timeout=60 \
             || INTEGRATION_EXIT_CODE=$?
 
         # Clean up test infrastructure

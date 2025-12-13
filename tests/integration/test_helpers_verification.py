@@ -8,9 +8,8 @@ import json
 from pathlib import Path
 
 from tests.integration.test_helpers import (
-    MINIMUM_GUARANTEES,
-    REQUIRED_SPECIALIST_TOOLS,
-    SPECIALIST_EXECUTION_ORDER,
+    CRITICAL_GUARANTEES,
+    TYPICAL_GUARANTEES,
     extract_specialist_timeline,
     generate_checkpoint_summary,
     generate_cloudevent_summary,
@@ -19,7 +18,7 @@ from tests.integration.test_helpers import (
     save_artifact,
     validate_minimum_events,
     validate_specialist_order,
-    validate_tool_pairing,
+    validate_event_structure,
 )
 
 

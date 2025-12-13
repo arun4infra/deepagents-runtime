@@ -14,7 +14,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock
 
-from agent_executor.core.builder import GraphBuilder, GraphBuilderError
+from core.builder import GraphBuilder, GraphBuilderError
 from langchain_core.tools import BaseTool
 
 

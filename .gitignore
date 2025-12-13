@@ -10,3 +10,4 @@ uv.lock
 agent_executor.egg-info
 codebase.md
 dev
+tests/integration/outputs

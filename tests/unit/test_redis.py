@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import redis
 
-from agent_executor.services.redis import RedisClient
+from services.redis import RedisClient
 
 
 class TestRedisClient:

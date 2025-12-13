@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from langchain_core.tools import tool as langchain_tool
 from langchain_core.runnables import Runnable
 
-from agent_executor.core import build_subagent, SubAgentCompilationError
+from core import build_subagent, SubAgentCompilationError
 
 # Check if deepagents is available
 try:

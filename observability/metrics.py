@@ -19,48 +19,65 @@ References:
     - Design: Section 2.8 (Observability Design)
 """
 
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, REGISTRY
+
+# Use a separate registry for tests to avoid conflicts
+import os
+if os.getenv('PYTEST_CURRENT_TEST'):
+    # Create a separate registry for tests
+    test_registry = CollectorRegistry()
+    registry = test_registry
+else:
+    # Use the default registry for production
+    registry = REGISTRY
 
 # Job execution metrics
 agent_executor_jobs_total = Counter(
     'agent_executor_jobs_total',
     'Total number of agent execution jobs processed',
-    ['status']  # status=completed|failed
+    ['status'],  # status=completed|failed
+    registry=registry
 )
 
 agent_executor_job_duration_seconds = Histogram(
     'agent_executor_job_duration_seconds',
     'Duration of agent execution jobs in seconds',
-    buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]
+    buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0],
+    registry=registry
 )
 
 # Infrastructure metrics
 agent_executor_db_connection_errors_total = Counter(
     'agent_executor_db_connection_errors_total',
-    'Total number of database connection errors'
+    'Total number of database connection errors',
+    registry=registry
 )
 
 # Redis metrics (optional but useful for monitoring)
 agent_executor_redis_publish_total = Counter(
     'agent_executor_redis_publish_total',
     'Total number of Redis stream events published',
-    ['event_type']  # event_type=on_llm_stream|on_tool_start|on_tool_end|end|unknown
+    ['event_type'],  # event_type=on_llm_stream|on_tool_start|on_tool_end|end|unknown
+    registry=registry
 )
 
 agent_executor_redis_publish_errors_total = Counter(
     'agent_executor_redis_publish_errors_total',
-    'Total number of Redis publish errors'
+    'Total number of Redis publish errors',
+    registry=registry
 )
 
 # NATS metrics
 agent_executor_nats_messages_processed_total = Counter(
     'agent_executor_nats_messages_processed_total',
-    'Total number of NATS messages processed successfully'
+    'Total number of NATS messages processed successfully',
+    registry=registry
 )
 
 agent_executor_nats_messages_failed_total = Counter(
     'agent_executor_nats_messages_failed_total',
-    'Total number of NATS messages that failed processing'
+    'Total number of NATS messages that failed processing',
+    registry=registry
 )
 
 
@@ -85,4 +102,4 @@ def get_metrics() -> tuple[bytes, str]:
         - Tasks: Task 9.3
         - Requirements: Observable pillar
     """
-    return generate_latest(), CONTENT_TYPE_LATEST
+    return generate_latest(registry), CONTENT_TYPE_LATEST

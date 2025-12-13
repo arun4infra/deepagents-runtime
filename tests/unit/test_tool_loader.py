@@ -11,7 +11,7 @@ References:
 import pytest
 from langchain_core.tools import BaseTool
 
-from agent_executor.core import load_tools_from_definition, ToolLoadingError
+from core import load_tools_from_definition, ToolLoadingError
 
 
 class TestToolLoader:

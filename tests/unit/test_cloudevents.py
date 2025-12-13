@@ -18,7 +18,7 @@ import httpx
 import pytest
 from cloudevents.http import CloudEvent
 
-from agent_executor.services.cloudevents import CloudEventEmitter
+from services.cloudevents import CloudEventEmitter
 
 
 class TestCloudEventEmitterInitialization:

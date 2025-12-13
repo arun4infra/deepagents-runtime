@@ -23,7 +23,7 @@ try:
 except ImportError:
     OTEL_AVAILABLE = False
 
-from agent_executor.observability.metrics import (
+from observability.metrics import (
     agent_executor_redis_publish_total,
     agent_executor_redis_publish_errors_total
 )
