@@ -193,7 +193,36 @@ kubectl top pods --all-namespaces --sort-by=memory | head -11 || echo "Metrics s
 
 # Check if deployment exists before waiting
 if kubectl get deployment/deepagents-runtime -n "${NAMESPACE}" >/dev/null 2>&1; then
-    echo "Deployment found, waiting for it to be ready..."
+    echo "Deployment found, checking pod status..."
+    
+    # Check if pods are failing
+    POD_STATUS=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+    echo "Pod status: $POD_STATUS"
+    
+    if [ "$POD_STATUS" = "Failed" ] || kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime | grep -E "(Error|CrashLoopBackOff|ImagePullBackOff)"; then
+        echo "=== Pod is failing, checking logs ==="
+        POD_NAME=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$POD_NAME" ]; then
+            echo "Getting logs from pod: $POD_NAME"
+            kubectl logs "$POD_NAME" -n "${NAMESPACE}" --previous || echo "No previous logs available"
+            kubectl logs "$POD_NAME" -n "${NAMESPACE}" || echo "No current logs available"
+            
+            echo "Describing pod for more details:"
+            kubectl describe pod "$POD_NAME" -n "${NAMESPACE}"
+        fi
+        
+        echo "=== Checking cache pod status ==="
+        CACHE_POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-cache -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$CACHE_POD" ]; then
+            echo "Cache pod status:"
+            kubectl describe pod "$CACHE_POD" -n "${NAMESPACE}"
+        fi
+        
+        echo "=== Checking resource constraints ==="
+        kubectl describe nodes | grep -A 10 -B 5 "Resource\|Pressure\|Condition" || echo "Could not get node resource info"
+    fi
+    
+    echo "Waiting for deployment to be ready..."
     kubectl wait deployment/deepagents-runtime \
         -n "${NAMESPACE}" \
         --for=condition=Available \
