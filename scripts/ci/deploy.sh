@@ -37,6 +37,38 @@ echo "  Namespace: ${NAMESPACE}"
 echo "  Image:     ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "================================================================================"
 
+# Pre-flight checks
+log_info "Running pre-flight checks..."
+echo "Checking Crossplane providers..."
+kubectl get providers -o wide || echo "No Crossplane providers found"
+
+echo "Checking XRDs..."
+kubectl get xrd | grep -E "(eventdriven|postgres|dragonfly)" || echo "Required XRDs not found"
+
+echo "Checking Compositions..."
+kubectl get compositions | grep -E "(event-driven|postgres|dragonfly)" || echo "Required Compositions not found"
+
+echo "Checking if platform is ready..."
+if ! kubectl get xrd xeventdrivenservices.platform.bizmatters.io >/dev/null 2>&1; then
+    log_error "EventDrivenService XRD not found! Platform may not be ready."
+    exit 1
+fi
+
+echo "Checking cluster resource usage..."
+echo "=== Node Resources ==="
+kubectl top nodes || echo "Metrics server not available for node stats"
+
+echo "=== Pod Resources (All Namespaces) ==="
+kubectl top pods --all-namespaces --sort-by=memory || echo "Metrics server not available for pod stats"
+
+echo "=== Node Capacity and Allocatable ==="
+kubectl describe nodes | grep -E "(Name:|Capacity:|Allocatable:|Allocated resources:)" || echo "Could not get node capacity info"
+
+echo "=== Resource Quotas ==="
+kubectl get resourcequota --all-namespaces || echo "No resource quotas found"
+
+log_info "Pre-flight checks completed"
+
 # Step 1: Create namespace
 log_info "Creating namespace..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -149,6 +181,16 @@ kubectl get eventdrivenservice -n "${NAMESPACE}" -o wide || echo "No EventDriven
 kubectl get deployment -n "${NAMESPACE}" -o wide || echo "No deployments found"
 kubectl get pods -n "${NAMESPACE}" -o wide || echo "No pods found"
 
+echo "=== Resource Usage During Deployment ==="
+echo "Node resource usage:"
+kubectl top nodes || echo "Metrics server not available"
+
+echo "Pod resource usage in target namespace:"
+kubectl top pods -n "${NAMESPACE}" || echo "No pods running yet or metrics unavailable"
+
+echo "All pod resource usage (top 10 by memory):"
+kubectl top pods --all-namespaces --sort-by=memory | head -11 || echo "Metrics server not available"
+
 # Check if deployment exists before waiting
 if kubectl get deployment/deepagents-runtime -n "${NAMESPACE}" >/dev/null 2>&1; then
     echo "Deployment found, waiting for it to be ready..."
@@ -166,6 +208,19 @@ else
     
     echo "Checking Crossplane provider status..."
     kubectl get providers || echo "No providers found"
+    
+    echo "=== Final Resource Analysis ==="
+    echo "Current node resource usage:"
+    kubectl top nodes || echo "Metrics server not available"
+    
+    echo "Memory and CPU pressure on nodes:"
+    kubectl describe nodes | grep -A 5 -B 5 -E "(MemoryPressure|DiskPressure|PIDPressure|Ready)" || echo "Could not get node conditions"
+    
+    echo "Pod resource requests vs limits in cluster:"
+    kubectl describe nodes | grep -A 20 "Allocated resources:" || echo "Could not get allocated resources"
+    
+    echo "Failed/Pending pods that might indicate resource issues:"
+    kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded || echo "No failed/pending pods"
     
     exit 1
 fi
