@@ -64,7 +64,10 @@ jobs:
           kubectl create namespace argocd
           kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.2.0/manifests/install.yaml
           
-          echo "Waiting for ArgoCD..."
+          echo "Waiting for ArgoCD pods to be created..."
+          sleep 30
+          
+          echo "Waiting for ArgoCD server to be ready..."
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
           
           kubectl apply -f bootstrap/argocd-admin-patch.yaml
