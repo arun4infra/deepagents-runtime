@@ -81,29 +81,25 @@ kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply
 log_info "Applying ExternalSecret for LLM keys..."
 kubectl apply -f "${CLAIMS_DIR}/external-secrets/llm-keys-es.yaml"
 
-# Wait for secret to be created
 log_info "Waiting for LLM keys secret..."
-kubectl wait secret/deepagents-runtime-llm-keys \
-    -n "${NAMESPACE}" \
-    --for=jsonpath='{.data}' \
-    --timeout=120s
+"${REPO_ROOT}/scripts/helpers/wait-for-externalsecret.sh" deepagents-runtime-llm-keys "${NAMESPACE}" 120
 
 # Step 3: Apply database claims
 log_info "Applying database claims..."
 kubectl apply -f "${CLAIMS_DIR}/postgres-claim.yaml"
 kubectl apply -f "${CLAIMS_DIR}/dragonfly-claim.yaml"
 
-# Wait for database secrets
-log_info "Waiting for database connection secrets..."
-kubectl wait secret/deepagents-runtime-db-conn \
-    -n "${NAMESPACE}" \
-    --for=jsonpath='{.data}' \
-    --timeout=300s
+# Wait for database instances to be ready
+log_info "Waiting for PostgreSQL cluster..."
+"${REPO_ROOT}/scripts/helpers/wait-for-postgres.sh" deepagents-runtime-db "${NAMESPACE}" 300
 
-kubectl wait secret/deepagents-runtime-cache-conn \
-    -n "${NAMESPACE}" \
-    --for=jsonpath='{.data}' \
-    --timeout=300s
+log_info "Waiting for Dragonfly cache..."
+"${REPO_ROOT}/scripts/helpers/wait-for-dragonfly.sh" deepagents-runtime-cache "${NAMESPACE}" 300
+
+# Wait for database connection secrets
+log_info "Waiting for database connection secrets..."
+"${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-db-conn "${NAMESPACE}" 60
+"${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-cache-conn "${NAMESPACE}" 60
 
 # Step 4: Apply EventDrivenService claim with correct image
 log_info "Applying EventDrivenService claim..."
@@ -259,13 +255,7 @@ else
 fi
 
 # Wait for pod to be ready
-kubectl wait pod \
-    -l app.kubernetes.io/name=deepagents-runtime \
-    -n "${NAMESPACE}" \
-    --for=condition=Ready \
-    --timeout=300s
-
-# Wait for pod to be ready
+log_info "Waiting for pods to be ready..."
 kubectl wait pod \
     -l app.kubernetes.io/name=deepagents-runtime \
     -n "${NAMESPACE}" \
