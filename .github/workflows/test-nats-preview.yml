@@ -1,0 +1,151 @@
+name: Test NATS Preview Deployment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/integration-tests-ci]
+    paths:
+      - '.github/workflows/test-nats-preview.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-nats:
+    name: Test NATS in Preview Mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout deepagents-runtime
+        uses: actions/checkout@v4
+        with:
+          path: deepagents-runtime
+      
+      - name: Clone zerotouch-platform
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/zerotouch-platform
+          ref: feature/agent-executor
+          path: zerotouch-platform
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+          mask-aws-account-id: true
+      
+      - name: Export AWS credentials
+        run: |
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          echo "::add-mask::$AWS_SESSION_TOKEN"
+      
+      - name: Setup Preview Cluster
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/helpers/setup-preview.sh
+          ./scripts/bootstrap/helpers/setup-preview.sh
+      
+      - name: Install ArgoCD
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/09-install-argocd.sh
+          ./scripts/bootstrap/09-install-argocd.sh preview
+      
+      - name: Wait for platform-bootstrap
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/10-wait-platform-bootstrap.sh
+          ./scripts/bootstrap/10-wait-platform-bootstrap.sh
+      
+      - name: Verify ESO
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/11-verify-eso.sh
+          ./scripts/bootstrap/11-verify-eso.sh
+      
+      - name: Verify child apps
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/12-verify-child-apps.sh
+          ./scripts/bootstrap/12-verify-child-apps.sh
+      
+      - name: Debug NATS Application
+        working-directory: zerotouch-platform
+        run: |
+          echo "=== NATS Application Spec ==="
+          kubectl get application nats -n argocd -o yaml || echo "NATS app not found"
+          
+          echo ""
+          echo "=== NATS Source File in Container ==="
+          KIND_CONTAINER=$(docker ps --filter "name=zerotouch-preview-control-plane" --format "{{.Names}}")
+          docker exec "$KIND_CONTAINER" cat /repo/bootstrap/components/01-nats.yaml || echo "Cannot read file"
+          
+          echo ""
+          echo "=== NATS Source File on Host ==="
+          cat bootstrap/components/01-nats.yaml
+          
+          echo ""
+          echo "=== Platform Bootstrap Application ==="
+          kubectl get application platform-bootstrap -n argocd -o yaml | grep -A 10 "spec:"
+      
+      - name: Fix Kind Conflicts
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/helpers/fix-kind-conflicts.sh
+          ./scripts/bootstrap/helpers/fix-kind-conflicts.sh
+      
+      - name: Wait for NATS to be Healthy
+        working-directory: zerotouch-platform
+        run: |
+          echo "Waiting for NATS to become healthy (max 5 minutes)..."
+          
+          for i in {1..60}; do
+            STATUS=$(kubectl get application nats -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
+            SYNC=$(kubectl get application nats -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+            
+            echo "[$i/60] NATS Status: $STATUS / $SYNC"
+            
+            if [ "$STATUS" = "Healthy" ] && [ "$SYNC" = "Synced" ]; then
+              echo "✓ NATS is healthy!"
+              exit 0
+            fi
+            
+            # Show errors if any
+            kubectl get application nats -n argocd -o jsonpath='{.status.conditions[?(@.type=="ComparisonError")].message}' 2>/dev/null || true
+            
+            sleep 5
+          done
+          
+          echo "✗ NATS did not become healthy"
+          echo ""
+          echo "=== NATS Application Status ==="
+          kubectl describe application nats -n argocd
+          
+          echo ""
+          echo "=== NATS Namespace Resources ==="
+          kubectl get all -n nats
+          
+          echo ""
+          echo "=== NATS PVC ==="
+          kubectl get pvc -n nats
+          
+          echo ""
+          echo "=== NATS Events ==="
+          kubectl get events -n nats --sort-by='.lastTimestamp'
+          
+          exit 1
+      
+      - name: Cleanup
+        if: always()
+        working-directory: zerotouch-platform
+        run: |
+          chmod +x scripts/bootstrap/cleanup-preview.sh
+          ./scripts/bootstrap/cleanup-preview.sh || true
