@@ -22,10 +22,10 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
         continue
     fi
     
-    # Check if CNPG cluster exists
-    CLUSTER_NAME=$(kubectl get postgresinstance "$CLAIM_NAME" -n "$NAMESPACE" -o jsonpath='{.status.clusterName}' 2>/dev/null || echo "")
+    # Check if CNPG cluster exists (created by Crossplane via Object resource)
+    CLUSTER_EXISTS=$(kubectl get cluster "$CLAIM_NAME" -n "$NAMESPACE" 2>/dev/null && echo "true" || echo "false")
     
-    if [ -z "$CLUSTER_NAME" ]; then
+    if [ "$CLUSTER_EXISTS" = "false" ]; then
         echo "  Waiting for CNPG cluster to be created... (${ELAPSED}s elapsed)"
         sleep $INTERVAL
         ELAPSED=$((ELAPSED + INTERVAL))
@@ -33,14 +33,14 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     fi
     
     # Check cluster status
-    CLUSTER_STATUS=$(kubectl get cluster "$CLUSTER_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-    READY_INSTANCES=$(kubectl get cluster "$CLUSTER_NAME" -n "$NAMESPACE" -o jsonpath='{.status.readyInstances}' 2>/dev/null || echo "0")
-    TOTAL_INSTANCES=$(kubectl get cluster "$CLUSTER_NAME" -n "$NAMESPACE" -o jsonpath='{.status.instances}' 2>/dev/null || echo "0")
+    CLUSTER_STATUS=$(kubectl get cluster "$CLAIM_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+    READY_INSTANCES=$(kubectl get cluster "$CLAIM_NAME" -n "$NAMESPACE" -o jsonpath='{.status.readyInstances}' 2>/dev/null || echo "0")
+    TOTAL_INSTANCES=$(kubectl get cluster "$CLAIM_NAME" -n "$NAMESPACE" -o jsonpath='{.status.instances}' 2>/dev/null || echo "0")
     
-    echo "  Cluster: $CLUSTER_NAME | Status: $CLUSTER_STATUS | Ready: $READY_INSTANCES/$TOTAL_INSTANCES (${ELAPSED}s elapsed)"
+    echo "  Cluster: $CLAIM_NAME | Status: $CLUSTER_STATUS | Ready: $READY_INSTANCES/$TOTAL_INSTANCES (${ELAPSED}s elapsed)"
     
     if [ "$CLUSTER_STATUS" = "Cluster in healthy state" ] && [ "$READY_INSTANCES" = "$TOTAL_INSTANCES" ] && [ "$READY_INSTANCES" != "0" ]; then
-        echo "✓ PostgreSQL cluster $CLUSTER_NAME is ready"
+        echo "✓ PostgreSQL cluster $CLAIM_NAME is ready"
         exit 0
     fi
     
@@ -49,6 +49,20 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 done
 
 echo "✗ Timeout waiting for PostgreSQL cluster after ${TIMEOUT}s"
+echo ""
+echo "=== Debugging Information ==="
 echo "PostgresInstance details:"
 kubectl describe postgresinstance "$CLAIM_NAME" -n "$NAMESPACE" 2>/dev/null || echo "Not found"
+echo ""
+echo "XPostgresInstance (composite) details:"
+kubectl get xpostgresinstance -o yaml 2>/dev/null | grep -A 30 "$CLAIM_NAME" || echo "Not found"
+echo ""
+echo "Crossplane Object resources:"
+kubectl get object -A 2>/dev/null | grep -i postgres || echo "No Object resources found"
+echo ""
+echo "CNPG Clusters in namespace:"
+kubectl get cluster -n "$NAMESPACE" 2>/dev/null || echo "No clusters found"
+echo ""
+echo "Recent events in namespace:"
+kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20
 exit 1
