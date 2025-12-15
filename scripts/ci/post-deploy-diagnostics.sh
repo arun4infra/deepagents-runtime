@@ -10,6 +10,7 @@ set -euo pipefail
 
 NAMESPACE="${1:-intelligence-deepagents}"
 SERVICE_NAME="${2:-deepagents-runtime}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Color codes
 RED='\033[0;31m'
@@ -118,12 +119,13 @@ else
     fi
 fi
 
-# Check DB connection secret
+# Check DB connection secret (with wait/retry)
 DB_SECRET="${SERVICE_NAME}-db-conn"
-if kubectl get secret "${DB_SECRET}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+log_info "Checking database connection secret..."
+if "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" "${DB_SECRET}" "${NAMESPACE}" 30 >/dev/null 2>&1; then
     check_passed "Database connection secret '${DB_SECRET}' exists"
 else
-    check_failed "Database connection secret '${DB_SECRET}' not found"
+    check_failed "Database connection secret '${DB_SECRET}' not found after 30s"
 fi
 
 # ==============================================================================
@@ -153,12 +155,13 @@ else
     fi
 fi
 
-# Check cache connection secret
+# Check cache connection secret (with wait/retry)
 CACHE_SECRET="${SERVICE_NAME}-cache-conn"
-if kubectl get secret "${CACHE_SECRET}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+log_info "Checking cache connection secret..."
+if "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" "${CACHE_SECRET}" "${NAMESPACE}" 30 >/dev/null 2>&1; then
     check_passed "Cache connection secret '${CACHE_SECRET}' exists"
 else
-    check_failed "Cache connection secret '${CACHE_SECRET}' not found"
+    check_failed "Cache connection secret '${CACHE_SECRET}' not found after 30s"
 fi
 
 # ==============================================================================
@@ -215,9 +218,10 @@ fi
 # ==============================================================================
 log_info "Checking application secrets..."
 
-# Check LLM keys secret
+# Check LLM keys secret (with wait/retry)
 LLM_SECRET="${SERVICE_NAME}-llm-keys"
-if kubectl get secret "${LLM_SECRET}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+log_info "Checking LLM keys secret..."
+if "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" "${LLM_SECRET}" "${NAMESPACE}" 30 >/dev/null 2>&1; then
     check_passed "LLM keys secret '${LLM_SECRET}' exists"
     
     # Verify it has required keys
@@ -233,7 +237,7 @@ if kubectl get secret "${LLM_SECRET}" -n "${NAMESPACE}" >/dev/null 2>&1; then
         check_failed "ANTHROPIC_API_KEY missing from secret"
     fi
 else
-    check_failed "LLM keys secret '${LLM_SECRET}' not found"
+    check_failed "LLM keys secret '${LLM_SECRET}' not found after 30s"
 fi
 
 # ==============================================================================
