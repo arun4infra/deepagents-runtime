@@ -79,6 +79,22 @@ log_info "Waiting for database connection secrets..."
 "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-db-conn "${NAMESPACE}" 60
 "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-cache-conn "${NAMESPACE}" 60
 
+# Step 3.5: Verify image is available in Kind cluster (for test mode)
+if [ "$MODE" = "preview" ] || [ "$MODE" = "auto" ]; then
+    log_info "Verifying image ${IMAGE_NAME}:${IMAGE_TAG} is available in Kind cluster..."
+    if docker exec kind-control-plane crictl images | grep -q "${IMAGE_NAME}.*${IMAGE_TAG}"; then
+        log_success "Image found in Kind cluster"
+        docker exec kind-control-plane crictl images | grep "${IMAGE_NAME}"
+    else
+        log_error "Image ${IMAGE_NAME}:${IMAGE_TAG} NOT found in Kind cluster!"
+        echo "Available images in Kind:"
+        docker exec kind-control-plane crictl images | grep -E "deepagents|REPOSITORY"
+        echo ""
+        log_error "Did you run './scripts/ci/build.sh --mode=test' first?"
+        exit 1
+    fi
+fi
+
 # Step 4: Apply EventDrivenService claim with correct image
 log_info "Applying EventDrivenService claim..."
 TEMP_CLAIM=$(mktemp)
@@ -112,12 +128,19 @@ else
     fi
 fi
 
+echo ""
+echo "=== EventDrivenService Claim to be Applied ==="
+cat "${TEMP_CLAIM}"
+echo "=== End of Claim ==="
+echo ""
+
+log_info "Applying EventDrivenService claim to namespace: ${NAMESPACE}"
 kubectl apply -f "${TEMP_CLAIM}"
 
 # Debug: Verify the claim was applied correctly
-echo "=== Verifying EventDrivenService claim ==="
-echo "Applied claim content:"
-cat "${TEMP_CLAIM}"
+echo ""
+echo "=== Verifying EventDrivenService claim was created ==="
+kubectl get eventdrivenservice deepagents-runtime -n "${NAMESPACE}" -o yaml || log_error "EventDrivenService not found immediately after apply"
 echo ""
 echo "Checking if EventDrivenService was created..."
 kubectl get eventdrivenservice deepagents-runtime -n "${NAMESPACE}" -o yaml || echo "EventDrivenService not found immediately after apply"
@@ -173,38 +196,142 @@ kubectl top pods --all-namespaces --sort-by=memory | head -11 || echo "Metrics s
 if kubectl get deployment/deepagents-runtime -n "${NAMESPACE}" >/dev/null 2>&1; then
     echo "Deployment found, checking pod status..."
     
-    # Check if pods are failing
+    # Check pod status
     POD_STATUS=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
     echo "Pod status: $POD_STATUS"
     
-    if [ "$POD_STATUS" = "Failed" ] || kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime | grep -E "(Error|CrashLoopBackOff|ImagePullBackOff)"; then
-        echo "=== Pod is failing, checking logs ==="
-        POD_NAME=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$POD_NAME" ]; then
-            echo "Getting logs from pod: $POD_NAME"
-            kubectl logs "$POD_NAME" -n "${NAMESPACE}" --previous || echo "No previous logs available"
-            kubectl logs "$POD_NAME" -n "${NAMESPACE}" || echo "No current logs available"
-            
-            echo "Describing pod for more details:"
-            kubectl describe pod "$POD_NAME" -n "${NAMESPACE}"
-        fi
+    # Get pod name for diagnostics
+    POD_NAME=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    
+    if [ -n "$POD_NAME" ]; then
+        echo ""
+        echo "=== Pod Details: $POD_NAME ==="
+        kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o wide
+        echo ""
         
-        echo "=== Checking cache pod status ==="
-        CACHE_POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-cache -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$CACHE_POD" ]; then
-            echo "Cache pod status:"
-            kubectl describe pod "$CACHE_POD" -n "${NAMESPACE}"
-        fi
+        echo "=== Container Readiness Status ==="
+        kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o jsonpath='{.status.containerStatuses[*].ready}' && echo ""
+        kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")]}' | jq '.' || echo "Ready condition unavailable"
+        echo ""
         
-        echo "=== Checking resource constraints ==="
-        kubectl describe nodes | grep -A 10 -B 5 "Resource\|Pressure\|Condition" || echo "Could not get node resource info"
+        echo "=== Pod Logs (Last 50 lines) ==="
+        kubectl logs "$POD_NAME" -n "${NAMESPACE}" --tail=50 || echo "No current logs available"
+        echo ""
+        
+        echo "=== Pod Events ==="
+        kubectl describe pod "$POD_NAME" -n "${NAMESPACE}" | grep -A 20 "Events:" || echo "No events found"
+        echo ""
+        
+        # Check if readiness probe is failing
+        echo "=== Readiness Probe Status ==="
+        kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o jsonpath='{.status.containerStatuses[*].state}' | jq '.' || echo "Container state unavailable"
+        echo ""
+        
+        # Try to curl the readiness endpoint from within the cluster
+        echo "=== Testing Readiness Endpoint ==="
+        POD_IP=$(kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o jsonpath='{.status.podIP}')
+        if [ -n "$POD_IP" ]; then
+            echo "Pod IP: $POD_IP"
+            echo "Attempting to curl /ready endpoint..."
+            kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+                curl -v -m 5 "http://${POD_IP}:8080/ready" 2>&1 || echo "Readiness endpoint test failed"
+        fi
+        echo ""
+    else
+        echo "ERROR: No pods found for deepagents-runtime!"
     fi
     
+    echo "=== Checking Dependencies ==="
+    echo "Database pods:"
+    kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-db -o wide
+    echo ""
+    echo "Cache pods:"
+    kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-cache -o wide
+    echo ""
+    
+    echo "=== Checking Secrets ==="
+    kubectl get secrets -n "${NAMESPACE}" | grep deepagents-runtime
+    echo ""
+    
     echo "Waiting for deployment to be ready..."
-    kubectl wait deployment/deepagents-runtime \
+    if ! kubectl wait deployment/deepagents-runtime \
         -n "${NAMESPACE}" \
         --for=condition=Available \
-        --timeout=300s
+        --timeout=300s; then
+        
+        log_error "Deployment failed to become ready within timeout!"
+        echo ""
+        echo "=== DEPLOYMENT FAILURE DIAGNOSTICS ==="
+        echo ""
+        
+        # Get deployment status
+        echo "--- Deployment Status ---"
+        kubectl get deployment deepagents-runtime -n "${NAMESPACE}" -o wide
+        echo ""
+        kubectl describe deployment deepagents-runtime -n "${NAMESPACE}"
+        echo ""
+        
+        # Get ReplicaSet status
+        echo "--- ReplicaSet Status ---"
+        kubectl get replicaset -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o wide
+        echo ""
+        kubectl describe replicaset -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime
+        echo ""
+        
+        # Get pod status and logs
+        echo "--- Pod Status ---"
+        kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o wide
+        echo ""
+        
+        POD_NAME=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$POD_NAME" ]; then
+            echo "--- Pod Description: $POD_NAME ---"
+            kubectl describe pod "$POD_NAME" -n "${NAMESPACE}"
+            echo ""
+            
+            echo "--- Pod Logs (Current) ---"
+            kubectl logs "$POD_NAME" -n "${NAMESPACE}" --tail=100 || echo "No current logs available"
+            echo ""
+            
+            echo "--- Pod Logs (Previous) ---"
+            kubectl logs "$POD_NAME" -n "${NAMESPACE}" --previous --tail=100 || echo "No previous logs available"
+            echo ""
+            
+            # Check container status
+            echo "--- Container Status ---"
+            kubectl get pod "$POD_NAME" -n "${NAMESPACE}" -o jsonpath='{.status.containerStatuses[*]}' | jq '.' || echo "Container status unavailable"
+            echo ""
+        else
+            echo "ERROR: No pods found for deepagents-runtime!"
+        fi
+        
+        # Get recent events
+        echo "--- Recent Events ---"
+        kubectl get events -n "${NAMESPACE}" --sort-by='.lastTimestamp' | tail -30
+        echo ""
+        
+        # Check dependencies
+        echo "--- Dependency Status ---"
+        echo "Database:"
+        kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-db -o wide
+        echo ""
+        echo "Cache:"
+        kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime-cache -o wide
+        echo ""
+        
+        # Check secrets
+        echo "--- Secrets Status ---"
+        kubectl get secrets -n "${NAMESPACE}" | grep deepagents-runtime
+        echo ""
+        
+        # Node resources
+        echo "--- Node Resources ---"
+        kubectl describe nodes | grep -A 10 "Allocated resources:" || echo "Could not get node resources"
+        echo ""
+        
+        log_error "Deployment diagnostics complete. Check logs above for details."
+        exit 1
+    fi
 else
     echo "ERROR: Deployment 'deepagents-runtime' not found after 30 seconds!"
     echo "Checking EventDrivenService details..."
@@ -238,4 +365,23 @@ kubectl wait pod \
     --timeout=300s
 
 log_success "Service deployed successfully"
-log_info "Namespace: ${NAMESPACE} | Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo ""
+echo "================================================================================"
+echo "DEPLOYMENT SUMMARY"
+echo "================================================================================"
+echo "  Namespace:        ${NAMESPACE}"
+echo "  Image:            ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "  Mode:             ${MODE}"
+echo ""
+echo "Service Status:"
+kubectl get deployment,pods,svc -n "${NAMESPACE}" -l app.kubernetes.io/name=deepagents-runtime
+echo ""
+echo "Dependencies:"
+kubectl get pods -n "${NAMESPACE}" -l 'app.kubernetes.io/name in (deepagents-runtime-db,deepagents-runtime-cache)'
+echo ""
+echo "To view logs:"
+echo "  kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=deepagents-runtime -f"
+echo ""
+echo "To port-forward:"
+echo "  kubectl port-forward -n ${NAMESPACE} svc/deepagents-runtime 8080:8080"
+echo "================================================================================"

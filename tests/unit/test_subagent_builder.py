@@ -26,8 +26,7 @@ except ImportError:
 class TestSubagentBuilder:
     """Test suite for subagent builder module."""
 
-    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
-    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('core.subagent_builder.create_react_agent')
     def test_build_subagent_basic_fallback(self, mock_create_react_agent):
         """Test basic sub-agent compilation with fallback (no deepagents)."""
         mock_agent = Mock(spec=Runnable)
@@ -63,10 +62,9 @@ class TestSubagentBuilder:
         assert len(call_args[1]["tools"]) == 1
 
     @pytest.mark.skipif(not DEEPAGENTS_INSTALLED, reason="deepagents package not installed")
-    @patch('deepagents_runtime.core.subagent_builder.create_agent')
-    @patch('deepagents_runtime.core.subagent_builder.FilesystemMiddleware')
-    @patch('deepagents_runtime.core.subagent_builder.CompiledSubAgent')
-    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', True)
+    @patch('core.subagent_builder.create_agent')
+    @patch('core.subagent_builder.FilesystemMiddleware')
+    @patch('core.subagent_builder.CompiledSubAgent')
     def test_build_subagent_with_deepagents(
         self, mock_compiled_subagent, mock_filesystem_middleware, mock_create_agent
     ):
@@ -114,8 +112,7 @@ class TestSubagentBuilder:
         assert call_args[1]["system_prompt"] == "You are a test specialist."
         assert len(call_args[1]["tools"]) == 1
 
-    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
-    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('core.subagent_builder.create_react_agent')
     def test_build_subagent_no_tools(self, mock_create_react_agent):
         """Test sub-agent compilation with no tools."""
         mock_agent = Mock(spec=Runnable)
@@ -139,8 +136,7 @@ class TestSubagentBuilder:
         call_args = mock_create_react_agent.call_args
         assert len(call_args[1]["tools"]) == 0
 
-    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
-    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('core.subagent_builder.create_react_agent')
     def test_build_subagent_missing_tools(self, mock_create_react_agent):
         """Test sub-agent compilation with missing tools."""
         mock_agent = Mock(spec=Runnable)
@@ -170,8 +166,7 @@ class TestSubagentBuilder:
         call_args = mock_create_react_agent.call_args
         assert len(call_args[1]["tools"]) == 1
 
-    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
-    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('core.subagent_builder.create_react_agent')
     def test_build_subagent_compilation_error(self, mock_create_react_agent):
         """Test sub-agent compilation handles errors."""
         # Make create_react_agent raise an exception
