@@ -1,0 +1,91 @@
+name: Quality Gate
+
+# This workflow acts as a quality gate that only succeeds when ALL other workflows pass.
+# The build-and-push workflow depends on this, ensuring production builds only happen
+# after all quality checks (tests, linting, security scans, etc.) have passed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  quality-gate:
+    name: All Quality Checks Passed
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check all workflow runs for this commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            console.log(`Checking workflow runs for commit: ${sha}`);
+            
+            // Get all workflow runs for this commit
+            const { data: workflowRuns } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              head_sha: sha,
+              per_page: 100
+            });
+            
+            console.log(`Found ${workflowRuns.workflow_runs.length} workflow runs for this commit`);
+            
+            // Filter out this workflow and build-and-push workflow
+            const relevantWorkflows = workflowRuns.workflow_runs.filter(run => 
+              run.name !== 'Quality Gate' && 
+              run.name !== 'Build and Push Production Image'
+            );
+            
+            console.log(`Checking ${relevantWorkflows.length} relevant workflows...`);
+            
+            // Check if all relevant workflows succeeded
+            const failedWorkflows = [];
+            const pendingWorkflows = [];
+            
+            for (const run of relevantWorkflows) {
+              console.log(`- ${run.name}: ${run.status} (${run.conclusion})`);
+              
+              if (run.status !== 'completed') {
+                pendingWorkflows.push(run.name);
+              } else if (run.conclusion !== 'success') {
+                failedWorkflows.push({ name: run.name, conclusion: run.conclusion });
+              }
+            }
+            
+            // Report results
+            if (pendingWorkflows.length > 0) {
+              core.setFailed(`⏳ Waiting for workflows to complete: ${pendingWorkflows.join(', ')}`);
+              return;
+            }
+            
+            if (failedWorkflows.length > 0) {
+              const failures = failedWorkflows.map(w => `${w.name} (${w.conclusion})`).join(', ');
+              core.setFailed(`❌ Quality gate failed. Failed workflows: ${failures}`);
+              return;
+            }
+            
+            console.log('✅ All quality checks passed!');
+            core.summary
+              .addHeading('Quality Gate: PASSED ✅')
+              .addRaw(`All ${relevantWorkflows.length} workflow(s) completed successfully for commit ${sha.substring(0, 7)}`)
+              .write();
+      
+      - name: Quality gate summary
+        if: success()
+        run: |
+          echo "✅ All quality checks passed!"
+          echo "Ready for production build and deployment."
