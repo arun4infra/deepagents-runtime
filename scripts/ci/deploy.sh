@@ -79,7 +79,27 @@ log_info "Waiting for database connection secrets..."
 "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-db-conn "${NAMESPACE}" 60
 "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" deepagents-runtime-cache-conn "${NAMESPACE}" 60
 
-# Step 3.5: Verify image is available in Kind cluster (for test mode)
+# Step 3.5: Create NATS stream and consumer
+log_info "Creating NATS stream and consumer..."
+kubectl apply -f "${CLAIMS_DIR}/nats-stream.yaml"
+
+log_info "Waiting for NATS stream creation job to complete..."
+if ! kubectl wait job/create-agent-execution-stream \
+    -n "${NAMESPACE}" \
+    --for=condition=complete \
+    --timeout=60s; then
+    log_error "NATS stream creation failed!"
+    echo "Job logs:"
+    kubectl logs -n "${NAMESPACE}" job/create-agent-execution-stream || echo "Could not retrieve logs"
+    echo ""
+    echo "Job status:"
+    kubectl describe job/create-agent-execution-stream -n "${NAMESPACE}" || echo "Could not describe job"
+    exit 1
+fi
+
+log_success "NATS stream and consumer created successfully"
+
+# Step 3.6: Verify image is available in Kind cluster (for test mode)
 if [ "$MODE" = "preview" ] || [ "$MODE" = "auto" ]; then
     log_info "Verifying image ${IMAGE_NAME}:${IMAGE_TAG} is available in Kind cluster..."
     
