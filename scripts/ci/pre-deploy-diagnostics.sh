@@ -32,10 +32,10 @@ kubectl get dragonflyinstance deepagents-runtime-cache -n intelligence-deepagent
 echo ""
 echo "=== Database Pods ==="
 echo "PostgreSQL:"
-kubectl get pods -n intelligence-deepagents -l postgresql=deepagents-runtime-db -o wide 2>/dev/null || echo "  No pods found"
+kubectl get pods -n intelligence-deepagents -l cnpg.io/cluster=deepagents-runtime-db -o wide 2>/dev/null || echo "  No pods found"
 echo ""
 echo "Dragonfly:"
-kubectl get pods -n intelligence-deepagents -l app.kubernetes.io/name=deepagents-runtime-cache -o wide 2>/dev/null || echo "  No pods found"
+kubectl get pods -n intelligence-deepagents -l app=deepagents-runtime-cache -o wide 2>/dev/null || echo "  No pods found"
 
 echo ""
 echo "=== Connection Secrets ==="

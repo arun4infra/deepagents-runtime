@@ -8,6 +8,9 @@ set -euo pipefail
 # Usage: ./post-deploy-diagnostics.sh <namespace> <service-name>
 # ==============================================================================
 
+# Trap errors and show detailed information
+trap 'echo ""; echo "ERROR: Script failed at line $LINENO with exit code $?"; echo "Last command: $BASH_COMMAND"; exit 1' ERR
+
 NAMESPACE="${1:-intelligence-deepagents}"
 SERVICE_NAME="${2:-deepagents-runtime}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -146,22 +149,27 @@ else
         check_failed "Dragonfly not ready: ${CACHE_READY:-0}/${CACHE_REPLICAS:-0} replicas"
     fi
     
-    # Check cache pods
-    CACHE_POD_COUNT=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${CACHE_NAME}" --no-headers 2>/dev/null | wc -l)
+    # Check cache pods (using label 'app' set by composition)
+    log_info "Checking Dragonfly pods with label app=${CACHE_NAME}..."
+    CACHE_POD_COUNT=$(kubectl get pods -n "${NAMESPACE}" -l "app=${CACHE_NAME}" --no-headers 2>/dev/null | wc -l)
     if [ "${CACHE_POD_COUNT}" -gt 0 ]; then
         check_passed "Dragonfly has ${CACHE_POD_COUNT} pod(s) running"
     else
-        check_failed "No Dragonfly pods found"
+        check_failed "No Dragonfly pods found with label app=${CACHE_NAME}"
+        echo "  Debugging: Listing all pods in namespace ${NAMESPACE}:"
+        kubectl get pods -n "${NAMESPACE}" --show-labels 2>/dev/null || echo "  Could not list pods"
     fi
 fi
 
 # Check cache connection secret (with wait/retry)
 CACHE_SECRET="${SERVICE_NAME}-cache-conn"
-log_info "Checking cache connection secret..."
-if "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" "${CACHE_SECRET}" "${NAMESPACE}" 30 >/dev/null 2>&1; then
+log_info "Checking cache connection secret (waiting up to 30s)..."
+if "${REPO_ROOT}/scripts/helpers/wait-for-secret.sh" "${CACHE_SECRET}" "${NAMESPACE}" 30 2>&1 | grep -v "Waiting for secret"; then
     check_passed "Cache connection secret '${CACHE_SECRET}' exists"
 else
     check_failed "Cache connection secret '${CACHE_SECRET}' not found after 30s"
+    echo "  Debugging: Listing all secrets in namespace ${NAMESPACE}:"
+    kubectl get secrets -n "${NAMESPACE}" 2>/dev/null | grep "${SERVICE_NAME}" || echo "  No matching secrets found"
 fi
 
 # ==============================================================================

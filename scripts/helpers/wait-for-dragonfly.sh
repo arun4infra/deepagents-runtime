@@ -38,11 +38,11 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     
     echo "  StatefulSet: $STS_NAME | Ready: $READY_REPLICAS/$TOTAL_REPLICAS (${ELAPSED}s elapsed)"
     
-    # Check for pod failures
-    POD_STATUS=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+    # Check for pod failures (using label 'app' set by composition)
+    POD_STATUS=$(kubectl get pods -n "$NAMESPACE" -l app="$CLAIM_NAME" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
     if [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "CrashLoopBackOff" ]; then
         echo "✗ Pod is in failed state: $POD_STATUS"
-        kubectl describe pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME"
+        kubectl describe pods -n "$NAMESPACE" -l app="$CLAIM_NAME"
         exit 1
     fi
     
@@ -65,7 +65,7 @@ echo "StatefulSet details:"
 kubectl describe statefulset "$CLAIM_NAME" -n "$NAMESPACE" 2>/dev/null || echo "Not found"
 echo ""
 echo "Pods:"
-kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME" 2>/dev/null || echo "No pods found"
+kubectl get pods -n "$NAMESPACE" -l app="$CLAIM_NAME" 2>/dev/null || echo "No pods found"
 echo ""
 echo "Recent events in namespace:"
 kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20
