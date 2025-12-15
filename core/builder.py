@@ -5,11 +5,11 @@ Graph Builder Module for Agent Executor (DEPRECATED).
 This module is DEPRECATED in favor of the new modular architecture.
 
 **Use this instead:**
-    from agent_executor.core import build_agent_from_definition
+    from deepagents_runtime.core import build_agent_from_definition
     agent = build_agent_from_definition(definition)
 
 **Old approach (deprecated):**
-    from agent_executor.core import GraphBuilder
+    from deepagents_runtime.core import GraphBuilder
     builder = GraphBuilder()
     agent = builder.build_from_definition(definition)
 
@@ -55,9 +55,9 @@ from typing import Any, Dict, List, Optional
 from langchain_core.tools import BaseTool
 from langchain_core.runnables import Runnable
 
-from agent_executor.core.model_identifier import create_model_identifier
-from agent_executor.core.subagent_builder import build_subagent
-from agent_executor.core.tool_loader import load_tools_from_definition
+from core.model_identifier import create_model_identifier
+from core.subagent_builder import build_subagent
+from core.tool_loader import load_tools_from_definition
 
 # Import deep agents pattern components
 # Note: The spec requires deepagents package with create_deep_agent and CompiledSubAgent

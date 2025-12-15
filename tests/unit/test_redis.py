@@ -26,8 +26,8 @@ from services.redis import RedisClient
 class TestRedisClient:
     """Test suite for RedisClient class."""
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_init_success(self, mock_pool_class: Mock, mock_redis_class: Mock) -> None:
         """
         Test successful Redis client initialization.
@@ -74,8 +74,8 @@ class TestRedisClient:
         assert client.pool == mock_pool
         assert client.client == mock_client
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_init_connection_failure(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -100,8 +100,8 @@ class TestRedisClient:
         with pytest.raises(redis.ConnectionError):
             RedisClient(host="redis.test.local", port=6379)
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_publish_stream_event_success(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -150,8 +150,8 @@ class TestRedisClient:
         # Verify return value
         assert subscriber_count == 5
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_publish_stream_event_types(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -193,8 +193,8 @@ class TestRedisClient:
                 "langgraph:stream:job-123", expected_message
             )
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_publish_stream_event_serialization_error(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -216,7 +216,7 @@ class TestRedisClient:
         client = RedisClient(host="redis.test.local", port=6379)
 
         # Try to publish non-serializable data
-        with patch("agent_executor.services.redis.json.dumps") as mock_dumps:
+        with patch("deepagents_runtime.services.redis.json.dumps") as mock_dumps:
             mock_dumps.side_effect = json.JSONDecodeError("Invalid", "", 0)
 
             with pytest.raises(json.JSONDecodeError):
@@ -226,8 +226,8 @@ class TestRedisClient:
                     data={"key": "value"},
                 )
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_publish_stream_event_redis_error(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -255,8 +255,8 @@ class TestRedisClient:
                 thread_id="job-123", event_type="test", data={"key": "value"}
             )
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_publish_end_event_success(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -297,8 +297,8 @@ class TestRedisClient:
         mock_client.publish.assert_called_once_with(expected_channel, expected_message)
         assert subscriber_count == 3
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_health_check_success(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -326,8 +326,8 @@ class TestRedisClient:
         assert mock_client.ping.call_count == 2
         assert result is True
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_health_check_failure(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:
@@ -354,8 +354,8 @@ class TestRedisClient:
 
         assert result is False
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_close_success(self, mock_pool_class: Mock, mock_redis_class: Mock) -> None:
         """
         Test successful connection close.
@@ -381,8 +381,8 @@ class TestRedisClient:
         # Verify pool disconnected
         mock_pool.disconnect.assert_called_once()
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_close_error(self, mock_pool_class: Mock, mock_redis_class: Mock) -> None:
         """
         Test connection close with error.
@@ -406,8 +406,8 @@ class TestRedisClient:
         client = RedisClient(host="redis.test.local", port=6379)
         client.close()  # Should not raise exception
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_context_manager(self, mock_pool_class: Mock, mock_redis_class: Mock) -> None:
         """
         Test context manager protocol.
@@ -433,8 +433,8 @@ class TestRedisClient:
         # Verify pool disconnected on exit
         mock_pool.disconnect.assert_called_once()
 
-    @patch("agent_executor.services.redis.redis.Redis")
-    @patch("agent_executor.services.redis.ConnectionPool")
+    @patch("deepagents_runtime.services.redis.redis.Redis")
+    @patch("deepagents_runtime.services.redis.ConnectionPool")
     def test_custom_connection_parameters(
         self, mock_pool_class: Mock, mock_redis_class: Mock
     ) -> None:

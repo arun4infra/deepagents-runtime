@@ -40,7 +40,7 @@ except ImportError:
         ImportWarning
     )
 
-from agent_executor.observability.metrics import agent_executor_db_connection_errors_total
+from observability.metrics import deepagents_runtime_db_connection_errors_total
 
 logger = structlog.get_logger(__name__)
 
@@ -165,7 +165,7 @@ class ExecutionManager:
             logger.info("postgres_checkpointer_initialized")
 
         except Exception as e:
-            agent_executor_db_connection_errors_total.inc()
+            deepagents_runtime_db_connection_errors_total.inc()
             logger.error(
                 "checkpointer_setup_failed",
                 error=str(e),
@@ -521,7 +521,7 @@ class ExecutionManager:
             return True
 
         except Exception as e:
-            agent_executor_db_connection_errors_total.inc()
+            deepagents_runtime_db_connection_errors_total.inc()
             logger.error("execution_manager_health_check_failed", error=str(e))
             return False
 

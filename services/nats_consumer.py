@@ -37,8 +37,8 @@ from core.executor import ExecutionManager
 from models.events import JobExecutionEvent
 from services.cloudevents import CloudEventEmitter
 from observability.metrics import (
-    agent_executor_nats_messages_processed_total,
-    agent_executor_nats_messages_failed_total
+    deepagents_runtime_nats_messages_processed_total,
+    deepagents_runtime_nats_messages_failed_total
 )
 
 logger = structlog.get_logger(__name__)
@@ -337,7 +337,7 @@ class NATSConsumer:
             )
 
             # Record success metric
-            agent_executor_nats_messages_processed_total.inc()
+            deepagents_runtime_nats_messages_processed_total.inc()
 
         except Exception as e:
             # Execution failure: Publish failed CloudEvent
@@ -372,7 +372,7 @@ class NATSConsumer:
             )
 
             # Record failure metric
-            agent_executor_nats_messages_failed_total.inc()
+            deepagents_runtime_nats_messages_failed_total.inc()
 
     async def publish_result(
         self,

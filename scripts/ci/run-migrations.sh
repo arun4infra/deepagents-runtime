@@ -4,7 +4,7 @@ set -e
 # Tier 3 Script: Run PostgreSQL Migrations for agent-executor
 # Owner: Backend Developer
 # Called by: Kubernetes init container, CI/CD pipelines
-# Purpose: Execute database migrations for agent_executor service
+# Purpose: Execute database migrations for deepagents_runtime service
 
 # --- Environment Variables ---
 # Required:

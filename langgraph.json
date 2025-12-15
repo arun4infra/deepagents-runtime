@@ -2,7 +2,7 @@
   "$schema": "https://langgra.ph/schema.json",
   "dependencies": ["."],
   "graphs": {
-    "agent-executor": "./agent.py:create_agent_executor"
+    "deepagents-runtime": "./agent.py:create_deepagents_runtime"
   },
   "env": ".env",
   "checkpointer": {

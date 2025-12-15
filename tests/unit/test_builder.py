@@ -38,7 +38,7 @@ class TestGraphBuilder:
         """Load the actual definition.json from specs directory."""
         spec_path = (
             Path(__file__).parent.parent.parent.parent.parent
-            / ".kiro/specs/agent-builder/phase1-9-agent_executor_service/definition.json"
+            / ".kiro/specs/agent-builder/phase1-9-deepagents_runtime_service/definition.json"
         )
         
         if not spec_path.exists():
@@ -60,7 +60,7 @@ class TestGraphBuilder:
         It will fail if dependencies (deepagents, etc.) are not installed, which is expected.
 
         References:
-            - Spec: .kiro/specs/agent-builder/phase1-9-agent_executor_service/definition.json
+            - Spec: .kiro/specs/agent-builder/phase1-9-deepagents_runtime_service/definition.json
             - Task: 6.6 (Write unit tests for GraphBuilder)
         """
         # Set a mock API key to allow model instantiation

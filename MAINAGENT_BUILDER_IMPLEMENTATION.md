@@ -56,7 +56,7 @@ main_runnable = create_deep_agent(
 **After:**
 ```python
 # Step 5: Build the main orchestrator agent
-from agent_executor.core.mainagent_builder import build_main_agent
+from deepagents_runtime.core.mainagent_builder import build_main_agent
 
 orchestrator_actual_config = orchestrator_config.get("config", {})
 

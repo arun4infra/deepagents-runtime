@@ -63,8 +63,8 @@ from services.redis import RedisClient
 
 # Import observability components
 from observability.metrics import (
-    agent_executor_jobs_total,
-    agent_executor_job_duration_seconds,
+    deepagents_runtime_jobs_total,
+    deepagents_runtime_job_duration_seconds,
     get_metrics
 )
 
@@ -164,7 +164,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     env_path = Path(__file__).parent.parent / ".env"
     load_dotenv(dotenv_path=env_path)
 
-    logger.info("agent_executor_service_starting")
+    logger.info("deepagents_runtime_service_starting")
 
     try:
         # Validate required environment variables
@@ -282,7 +282,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("nats_consumer_started")
 
         logger.info(
-            "agent_executor_service_started",
+            "deepagents_runtime_service_started",
             message="All services initialized successfully"
         )
 
@@ -300,7 +300,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     finally:
         # Shutdown: Clean up resources
-        logger.info("agent_executor_service_shutting_down")
+        logger.info("deepagents_runtime_service_shutting_down")
 
         # Stop NATS consumer
         if _nats_consumer:
@@ -324,7 +324,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             _redis_client.close()
             logger.info("redis_client_closed")
 
-        logger.info("agent_executor_service_stopped")
+        logger.info("deepagents_runtime_service_stopped")
 
 
 # Initialize FastAPI application
@@ -577,13 +577,13 @@ async def metrics() -> Response:
         Response with metrics in Prometheus text format
 
     Metrics Exposed:
-        - agent_executor_jobs_total{status="completed|failed"}: Total job count
-        - agent_executor_job_duration_seconds: Histogram of job durations
-        - agent_executor_db_connection_errors_total: Database error count
-        - agent_executor_redis_publish_total{event_type="..."}: Redis publish count
-        - agent_executor_redis_publish_errors_total: Redis error count
-        - agent_executor_nats_messages_processed_total: NATS messages processed
-        - agent_executor_nats_messages_failed_total: NATS messages failed
+        - deepagents_runtime_jobs_total{status="completed|failed"}: Total job count
+        - deepagents_runtime_job_duration_seconds: Histogram of job durations
+        - deepagents_runtime_db_connection_errors_total: Database error count
+        - deepagents_runtime_redis_publish_total{event_type="..."}: Redis publish count
+        - deepagents_runtime_redis_publish_errors_total: Redis error count
+        - deepagents_runtime_nats_messages_processed_total: NATS messages processed
+        - deepagents_runtime_nats_messages_failed_total: NATS messages failed
 
     References:
         - Tasks: Task 1.6, 9.3 (Prometheus metrics endpoint)
@@ -760,8 +760,8 @@ async def process_cloudevent(
 
             # Record metrics for successful job completion
             job_duration = time.time() - job_start_time
-            agent_executor_jobs_total.labels(status='completed').inc()
-            agent_executor_job_duration_seconds.observe(job_duration)
+            deepagents_runtime_jobs_total.labels(status='completed').inc()
+            deepagents_runtime_job_duration_seconds.observe(job_duration)
 
             logger.info(
                 "job_metrics_recorded",
@@ -803,8 +803,8 @@ async def process_cloudevent(
 
             # Record metrics for failed job
             job_duration = time.time() - job_start_time
-            agent_executor_jobs_total.labels(status='failed').inc()
-            agent_executor_job_duration_seconds.observe(job_duration)
+            deepagents_runtime_jobs_total.labels(status='failed').inc()
+            deepagents_runtime_job_duration_seconds.observe(job_duration)
 
             logger.info(
                 "job_metrics_recorded",
@@ -847,13 +847,13 @@ def main() -> None:
     Entry point for running the application with uvicorn.
 
     Usage:
-        python -m agent_executor.api.main
+        python -m deepagents_runtime.api.main
         or
-        uvicorn agent_executor.api.main:app --host 0.0.0.0 --port 8080
+        uvicorn deepagents_runtime.api.main:app --host 0.0.0.0 --port 8080
     """
     import uvicorn
     uvicorn.run(
-        "agent_executor.api.main:app",
+        "deepagents_runtime.api.main:app",
         host="0.0.0.0",
         port=8080,
         log_level="info"

@@ -43,12 +43,12 @@ class TestBuildAgentFromDefinition:
         return vault_client
 
     @pytest.mark.skipif(not DEEPAGENTS_INSTALLED, reason="deepagents package not installed")
-    @patch('agent_executor.core.builder.create_deep_agent')
-    @patch('agent_executor.core.subagent_builder.create_agent')
-    @patch('agent_executor.core.subagent_builder.FilesystemMiddleware')
-    @patch('agent_executor.core.subagent_builder.CompiledSubAgent')
-    @patch('agent_executor.core.subagent_builder.DEEPAGENTS_AVAILABLE', True)
-    @patch('agent_executor.core.builder.DEEPAGENTS_AVAILABLE', True)
+    @patch('deepagents_runtime.core.builder.create_deep_agent')
+    @patch('deepagents_runtime.core.subagent_builder.create_agent')
+    @patch('deepagents_runtime.core.subagent_builder.FilesystemMiddleware')
+    @patch('deepagents_runtime.core.subagent_builder.CompiledSubAgent')
+    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', True)
+    @patch('deepagents_runtime.core.builder.DEEPAGENTS_AVAILABLE', True)
     def test_build_agent_with_deepagents(
         self,
         mock_compiled_subagent,
@@ -133,10 +133,10 @@ test_tool = test_function
         assert isinstance(call_args[1]["subagents"], list)
         assert len(call_args[1]["subagents"]) == 1
 
-    @patch('agent_executor.core.builder.create_react_agent')
-    @patch('agent_executor.core.subagent_builder.create_react_agent')
-    @patch('agent_executor.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
-    @patch('agent_executor.core.builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('deepagents_runtime.core.builder.create_react_agent')
+    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
+    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('deepagents_runtime.core.builder.DEEPAGENTS_AVAILABLE', False)
     def test_build_agent_fallback_mode(
         self,
         mock_subagent_create_react,
@@ -213,10 +213,10 @@ test_tool = test_function
             builder = GraphBuilder(mock_vault_client)
             builder.build_from_definition(definition)
 
-    @patch('agent_executor.core.builder.create_react_agent')
-    @patch('agent_executor.core.subagent_builder.create_react_agent')
-    @patch('agent_executor.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
-    @patch('agent_executor.core.builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('deepagents_runtime.core.builder.create_react_agent')
+    @patch('deepagents_runtime.core.subagent_builder.create_react_agent')
+    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', False)
+    @patch('deepagents_runtime.core.builder.DEEPAGENTS_AVAILABLE', False)
     def test_build_agent_no_orchestrator(
         self,
         mock_subagent_create_react,
@@ -247,12 +247,12 @@ test_tool = test_function
         assert agent is not None
 
     @pytest.mark.skipif(not DEEPAGENTS_INSTALLED, reason="deepagents package not installed")
-    @patch('agent_executor.core.builder.create_deep_agent')
-    @patch('agent_executor.core.subagent_builder.create_agent')
-    @patch('agent_executor.core.subagent_builder.FilesystemMiddleware')
-    @patch('agent_executor.core.subagent_builder.CompiledSubAgent')
-    @patch('agent_executor.core.subagent_builder.DEEPAGENTS_AVAILABLE', True)
-    @patch('agent_executor.core.builder.DEEPAGENTS_AVAILABLE', True)
+    @patch('deepagents_runtime.core.builder.create_deep_agent')
+    @patch('deepagents_runtime.core.subagent_builder.create_agent')
+    @patch('deepagents_runtime.core.subagent_builder.FilesystemMiddleware')
+    @patch('deepagents_runtime.core.subagent_builder.CompiledSubAgent')
+    @patch('deepagents_runtime.core.subagent_builder.DEEPAGENTS_AVAILABLE', True)
+    @patch('deepagents_runtime.core.builder.DEEPAGENTS_AVAILABLE', True)
     def test_build_agent_with_multiple_specialists(
         self,
         mock_compiled_subagent,

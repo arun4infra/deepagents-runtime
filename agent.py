@@ -23,9 +23,9 @@ sys.path.insert(0, str(tests_dir))
 from integration.test_helpers import load_definition_with_files
 
 
-def create_agent_executor(checkpointer: Optional[BaseCheckpointSaver] = None):
+def create_deepagents_runtime(checkpointer: Optional[BaseCheckpointSaver] = None):
     """
-    Creates an agent executor graph from the test definition.
+    Creates a deepagents runtime graph from the test definition.
     
     This function loads the test definition.json and builds a graph for
     development and testing purposes. LangGraph CLI automatically provides
@@ -38,7 +38,7 @@ def create_agent_executor(checkpointer: Optional[BaseCheckpointSaver] = None):
     Returns:
         Compiled agent graph ready for execution
     """
-    print("🚀 create_agent_executor called!")
+    print("🚀 create_deepagents_runtime called!")
     print(f"📦 Checkpointer provided by LangGraph CLI: {checkpointer is not None}")
     print(f"🔧 Checkpointer type: {type(checkpointer) if checkpointer else 'None'}")
     

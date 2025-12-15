@@ -80,7 +80,7 @@ class TestCloudEventEmitterEmitCompleted:
         result = {"output": "Task completed successfully", "data": {"key": "value"}}
         trace_id = "uuid-trace-456"
 
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -135,7 +135,7 @@ class TestCloudEventEmitterEmitCompleted:
     @pytest.mark.asyncio
     async def test_emit_completed_handles_http_timeout(self, emitter: CloudEventEmitter) -> None:
         """Test handling of HTTP timeout during CloudEvent POST."""
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.TimeoutException("Request timed out")
             mock_client_cls.return_value.__aenter__.return_value = mock_client
@@ -150,7 +150,7 @@ class TestCloudEventEmitterEmitCompleted:
     @pytest.mark.asyncio
     async def test_emit_completed_handles_http_error(self, emitter: CloudEventEmitter) -> None:
         """Test handling of HTTP error status codes during CloudEvent POST."""
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.status_code = 500
@@ -189,7 +189,7 @@ class TestCloudEventEmitterEmitFailed:
         }
         trace_id = "uuid-trace-456"
 
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -256,7 +256,7 @@ class TestCloudEventEmitterEmitFailed:
         """Test handling of HTTP timeout during failed CloudEvent POST."""
         error = {"message": "Tool execution failed"}
 
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.TimeoutException("Request timed out")
             mock_client_cls.return_value.__aenter__.return_value = mock_client
@@ -330,7 +330,7 @@ class TestCloudEventEmitterIntegration:
         result: Dict[str, Any] = {}  # Empty result is valid
         trace_id = "uuid-trace-456"
 
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -349,7 +349,7 @@ class TestCloudEventEmitterIntegration:
         error = {"message": "Unknown error occurred"}  # Minimal valid error
         trace_id = "uuid-trace-456"
 
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -364,7 +364,7 @@ class TestCloudEventEmitterIntegration:
     @pytest.mark.asyncio
     async def test_emit_completed_request_error(self, emitter: CloudEventEmitter) -> None:
         """Test handling of generic request error during CloudEvent POST."""
-        with patch("agent_executor.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
+        with patch("deepagents_runtime.services.cloudevents.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.RequestError("Connection failed")
             mock_client_cls.return_value.__aenter__.return_value = mock_client

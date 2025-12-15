@@ -39,7 +39,7 @@ echo "→ API docs available at: http://localhost:${PORT}/docs"
 echo ""
 
 # Start with Poetry in development mode
-poetry run uvicorn agent_executor.api.main:app \
+poetry run uvicorn deepagents_runtime.api.main:app \
     --reload \
     --host 0.0.0.0 \
     --port "${PORT}" \

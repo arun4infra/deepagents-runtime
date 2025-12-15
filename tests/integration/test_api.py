@@ -25,8 +25,8 @@ Prerequisites:
 References:
     - Requirements: Req. 1.1, 1.2, 3.1, 5.1, 5.3
     - Design: Section 2.11 (Internal Component Architecture), Section 3.1 (API Layer)
-    - Spec: .kiro/specs/agent-builder/phase1-9-agent_executor_service/
-    - Tasks: Task 8.7 (Tier 1 Critical Integration Tests - Enhanced)
+    - Spec: .kiro/specs/agent-builder/phase1-9-deepagents_runtime_service/
+    - Tasks: Task 8.7 (Tier 1 Critical Integr
 """
 
 import json
@@ -527,7 +527,7 @@ async def test_cloudevent_processing_end_to_end_success(
 
     # Import app after environment is configured
     print("[DEBUG] Importing FastAPI app...")
-    from agent_executor.api.main import app
+    from api.main import app
     print("[DEBUG] App imported successfully")
 
     # Create test client with lifespan context
@@ -1107,7 +1107,7 @@ async def test_nats_consumer_processing(
     capture_thread.start()
     
     # Start the FastAPI app with NATS consumer
-    from agent_executor.api.main import app
+    from api.main import app
     
     # Import app starts the lifespan which initializes NATS consumer
     # We need to give it time to start

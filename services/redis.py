@@ -24,8 +24,8 @@ except ImportError:
     OTEL_AVAILABLE = False
 
 from observability.metrics import (
-    agent_executor_redis_publish_total,
-    agent_executor_redis_publish_errors_total
+    deepagents_runtime_redis_publish_total,
+    deepagents_runtime_redis_publish_errors_total
 )
 
 logger = structlog.get_logger(__name__)
@@ -167,7 +167,7 @@ class RedisClient:
                     subscriber_count = self.client.publish(channel, message)
 
                     # Record metrics for successful publish
-                    agent_executor_redis_publish_total.labels(event_type=event_type).inc()
+                    deepagents_runtime_redis_publish_total.labels(event_type=event_type).inc()
 
                     # Structured logging with correlation IDs
                     logger.info(
@@ -183,7 +183,7 @@ class RedisClient:
                     return subscriber_count
 
                 except json.JSONDecodeError as e:
-                    agent_executor_redis_publish_errors_total.inc()
+                    deepagents_runtime_redis_publish_errors_total.inc()
                     logger.error(
                         "redis_event_serialization_failed",
                         channel=channel,
@@ -196,7 +196,7 @@ class RedisClient:
                     raise
 
                 except redis.RedisError as e:
-                    agent_executor_redis_publish_errors_total.inc()
+                    deepagents_runtime_redis_publish_errors_total.inc()
                     logger.error(
                         "redis_publish_failed",
                         channel=channel,
@@ -217,7 +217,7 @@ class RedisClient:
                 subscriber_count = self.client.publish(channel, message)
 
                 # Record metrics for successful publish
-                agent_executor_redis_publish_total.labels(event_type=event_type).inc()
+                deepagents_runtime_redis_publish_total.labels(event_type=event_type).inc()
 
                 # Structured logging with correlation IDs
                 logger.info(
@@ -232,7 +232,7 @@ class RedisClient:
                 return subscriber_count
 
             except json.JSONDecodeError as e:
-                agent_executor_redis_publish_errors_total.inc()
+                deepagents_runtime_redis_publish_errors_total.inc()
                 logger.error(
                     "redis_event_serialization_failed",
                     channel=channel,
@@ -244,7 +244,7 @@ class RedisClient:
                 raise
 
             except redis.RedisError as e:
-                agent_executor_redis_publish_errors_total.inc()
+                deepagents_runtime_redis_publish_errors_total.inc()
                 logger.error(
                     "redis_publish_failed",
                     channel=channel,

@@ -1,5 +1,5 @@
 [project]
-name = "agent_executor"
+name = "deepagents_runtime"
 version = "0.1.0"
 description = "Serverless LangGraph Agent Execution Service"
 authors = [
