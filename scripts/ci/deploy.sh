@@ -106,7 +106,8 @@ if [ "$MODE" = "preview" ] || [ "$MODE" = "auto" ]; then
     fi
     
     # Check if image exists in Kind cluster
-    if docker exec "${KIND_NODE}" crictl images 2>/dev/null | grep -q "${IMAGE_NAME}.*${IMAGE_TAG}"; then
+    # Note: crictl output has multiple spaces between columns, so we need to be flexible with the pattern
+    if docker exec "${KIND_NODE}" crictl images 2>/dev/null | grep -E "${IMAGE_NAME}[[:space:]]+${IMAGE_TAG}"; then
         log_success "Image found in Kind cluster"
         echo "Image details:"
         docker exec "${KIND_NODE}" crictl images | grep "${IMAGE_NAME}" || true
