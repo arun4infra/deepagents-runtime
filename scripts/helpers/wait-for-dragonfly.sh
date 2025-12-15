@@ -22,10 +22,10 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
         continue
     fi
     
-    # Check if StatefulSet exists
-    STS_NAME=$(kubectl get dragonflyinstance "$CLAIM_NAME" -n "$NAMESPACE" -o jsonpath='{.status.statefulSetName}' 2>/dev/null || echo "")
+    # Check if StatefulSet exists (name matches claim name)
+    STS_NAME="$CLAIM_NAME"
     
-    if [ -z "$STS_NAME" ]; then
+    if ! kubectl get statefulset "$STS_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
         echo "  Waiting for StatefulSet to be created... (${ELAPSED}s elapsed)"
         sleep $INTERVAL
         ELAPSED=$((ELAPSED + INTERVAL))
@@ -38,6 +38,14 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     
     echo "  StatefulSet: $STS_NAME | Ready: $READY_REPLICAS/$TOTAL_REPLICAS (${ELAPSED}s elapsed)"
     
+    # Check for pod failures
+    POD_STATUS=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+    if [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "CrashLoopBackOff" ]; then
+        echo "✗ Pod is in failed state: $POD_STATUS"
+        kubectl describe pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME"
+        exit 1
+    fi
+    
     if [ "$READY_REPLICAS" = "$TOTAL_REPLICAS" ] && [ "$READY_REPLICAS" != "0" ]; then
         echo "✓ Dragonfly cache $STS_NAME is ready"
         exit 0
@@ -48,6 +56,17 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 done
 
 echo "✗ Timeout waiting for Dragonfly cache after ${TIMEOUT}s"
+echo ""
+echo "=== Debugging Information ==="
 echo "DragonflyInstance details:"
 kubectl describe dragonflyinstance "$CLAIM_NAME" -n "$NAMESPACE" 2>/dev/null || echo "Not found"
+echo ""
+echo "StatefulSet details:"
+kubectl describe statefulset "$CLAIM_NAME" -n "$NAMESPACE" 2>/dev/null || echo "Not found"
+echo ""
+echo "Pods:"
+kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$CLAIM_NAME" 2>/dev/null || echo "No pods found"
+echo ""
+echo "Recent events in namespace:"
+kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20
 exit 1

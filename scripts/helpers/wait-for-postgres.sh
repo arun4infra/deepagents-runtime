@@ -39,6 +39,14 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     
     echo "  Cluster: $CLAIM_NAME | Status: $CLUSTER_STATUS | Ready: $READY_INSTANCES/$TOTAL_INSTANCES (${ELAPSED}s elapsed)"
     
+    # Check for pod failures
+    POD_STATUS=$(kubectl get pods -n "$NAMESPACE" -l postgresql="$CLAIM_NAME" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+    if [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "CrashLoopBackOff" ]; then
+        echo "✗ Pod is in failed state: $POD_STATUS"
+        kubectl describe pods -n "$NAMESPACE" -l postgresql="$CLAIM_NAME"
+        exit 1
+    fi
+    
     if [ "$CLUSTER_STATUS" = "Cluster in healthy state" ] && [ "$READY_INSTANCES" = "$TOTAL_INSTANCES" ] && [ "$READY_INSTANCES" != "0" ]; then
         echo "✓ PostgreSQL cluster $CLAIM_NAME is ready"
         exit 0
