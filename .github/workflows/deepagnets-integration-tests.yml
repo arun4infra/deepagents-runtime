@@ -96,6 +96,13 @@ jobs:
           chmod +x scripts/ci/build.sh
           ./scripts/ci/build.sh --mode=test
       
+      - name: Cluster Diagnostics
+        if: always()
+        working-directory: deepagents-runtime
+        run: |
+          chmod +x scripts/ci/cluster-diagnostics.sh
+          ./scripts/ci/cluster-diagnostics.sh
+      
       - name: Deploy Service
         working-directory: deepagents-runtime
         env:

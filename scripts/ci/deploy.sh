@@ -43,35 +43,13 @@ log_info "Validating platform dependencies..."
 
 # Pre-flight checks
 log_info "Running pre-flight checks..."
-echo "Checking Crossplane providers..."
-kubectl get providers -o wide || echo "No Crossplane providers found"
 
-echo "Checking XRDs..."
-kubectl get xrd | grep -E "(eventdriven|postgres|dragonfly)" || echo "Required XRDs not found"
-
-echo "Checking Compositions..."
-kubectl get compositions | grep -E "(event-driven|postgres|dragonfly)" || echo "Required Compositions not found"
-
-echo "Checking if platform is ready..."
 if ! kubectl get xrd xeventdrivenservices.platform.bizmatters.io >/dev/null 2>&1; then
     log_error "EventDrivenService XRD not found! Platform may not be ready."
     exit 1
 fi
 
-echo "Checking cluster resource usage..."
-echo "=== Node Resources ==="
-kubectl top nodes || echo "Metrics server not available for node stats"
-
-echo "=== Pod Resources (All Namespaces) ==="
-kubectl top pods --all-namespaces --sort-by=memory || echo "Metrics server not available for pod stats"
-
-echo "=== Node Capacity and Allocatable ==="
-kubectl describe nodes | grep -E "(Name:|Capacity:|Allocatable:|Allocated resources:)" || echo "Could not get node capacity info"
-
-echo "=== Resource Quotas ==="
-kubectl get resourcequota --all-namespaces || echo "No resource quotas found"
-
-log_info "Pre-flight checks completed"
+log_info "✓ Platform is ready for deployment"
 
 # Step 1: Create namespace
 log_info "Creating namespace..."
