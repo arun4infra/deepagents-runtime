@@ -72,14 +72,15 @@ if [[ "${TEST_DIR}" == *"integration"* ]]; then
     log_info "Database: ${DB_NAME} (user: ${DB_USER})"
     log_info "Cache: Dragonfly (authenticated with password)"
     
-    # Start port-forwards in background
-    kubectl port-forward -n $NAMESPACE svc/deepagents-runtime-db-rw 15433:5432 &
+    # Start port-forwards in background with output redirection
+    log_info "Starting port-forwards..."
+    kubectl port-forward -n $NAMESPACE svc/deepagents-runtime-db-rw 15433:5432 >/dev/null 2>&1 &
     PF_PG_PID=$!
     
-    kubectl port-forward -n $NAMESPACE svc/deepagents-runtime-cache 16380:6379 &
+    kubectl port-forward -n $NAMESPACE svc/deepagents-runtime-cache 16380:6379 >/dev/null 2>&1 &
     PF_REDIS_PID=$!
     
-    kubectl port-forward -n nats svc/nats 14222:4222 &
+    kubectl port-forward -n nats svc/nats 14222:4222 >/dev/null 2>&1 &
     PF_NATS_PID=$!
     
     # Cleanup function
@@ -88,11 +89,13 @@ if [[ "${TEST_DIR}" == *"integration"* ]]; then
         kill $PF_PG_PID 2>/dev/null || true
         kill $PF_REDIS_PID 2>/dev/null || true
         kill $PF_NATS_PID 2>/dev/null || true
+        sleep 2
     }
     trap cleanup_port_forwards EXIT
     
-    # Wait for port-forwards to be ready
-    sleep 5
+    # Wait longer for port-forwards to stabilize
+    log_info "Waiting for port-forwards to be ready..."
+    sleep 10
     
     # Set environment variables for tests (using TEST_ prefix for fixtures)
     export TEST_POSTGRES_HOST="localhost"
