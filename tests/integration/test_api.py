@@ -322,7 +322,6 @@ def sample_cloudevent(sample_job_execution_event: Dict[str, Any]) -> Dict[str, A
 # ============================================================================
 
 
-@pytest.mark.timeout(600)  # 10 minutes for full agent execution with real LLM calls
 @pytest.mark.asyncio
 async def test_cloudevent_processing_end_to_end_success(
     postgres_connection: psycopg.Connection,
