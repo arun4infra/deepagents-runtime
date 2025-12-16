@@ -31,7 +31,7 @@ echo "==========================================================================
 mkdir -p "${ARTIFACTS_DIR}"
 
 # Validate required environment variables
-REQUIRED_VARS=("OPENAI_API_KEY" "ANTHROPIC_API_KEY")
+REQUIRED_VARS=("OPENAI_API_KEY")
 MISSING_VARS=()
 
 for var in "${REQUIRED_VARS[@]}"; do
@@ -45,6 +45,11 @@ if [ ${#MISSING_VARS[@]} -gt 0 ]; then
     log_error "Missing required environment variables:"
     printf '  - %s\n' "${MISSING_VARS[@]}"
     exit 1
+fi
+
+# Optional: ANTHROPIC_API_KEY (warn if missing)
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    log_info "⚠️  ANTHROPIC_API_KEY not set - Anthropic tests will be skipped"
 fi
 
 # Set test environment variables
