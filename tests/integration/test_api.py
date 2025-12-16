@@ -67,15 +67,33 @@ def postgres_connection() -> Generator[psycopg.Connection, None, None]:
     Yields:
         psycopg.Connection: Active PostgreSQL connection
     """
-    # Connect to PostgreSQL test database
+    # Connect to PostgreSQL test database with retry logic for CI stability
     # Support both local Docker Compose and deployed K8s via environment variables
-    conn = psycopg.connect(
-        host=os.environ.get("TEST_POSTGRES_HOST", "localhost"),
-        port=int(os.environ.get("TEST_POSTGRES_PORT", "15433")),
-        user=os.environ.get("TEST_POSTGRES_USER", "test_user"),
-        password=os.environ.get("TEST_POSTGRES_PASSWORD", "test_pass"),
-        dbname=os.environ.get("TEST_POSTGRES_DB", "test_db")
-    )
+    max_retries = 3
+    retry_delay = 1
+    conn = None
+    
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg.connect(
+                host=os.environ.get("TEST_POSTGRES_HOST", "localhost"),
+                port=int(os.environ.get("TEST_POSTGRES_PORT", "15433")),
+                user=os.environ.get("TEST_POSTGRES_USER", "test_user"),
+                password=os.environ.get("TEST_POSTGRES_PASSWORD", "test_pass"),
+                dbname=os.environ.get("TEST_POSTGRES_DB", "test_db")
+            )
+            print(f"PostgreSQL connection established (attempt {attempt + 1})")
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"PostgreSQL connection failed (attempt {attempt + 1}): {e}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                raise
+    
+    if conn is None:
+        raise RuntimeError("Failed to establish PostgreSQL connection after retries")
 
     # Check if we're testing against deployed K8s (tables already exist from service)
     # If TEST_POSTGRES_USER is not "test_user", we're likely testing against deployed env
@@ -1072,16 +1090,29 @@ async def test_nats_consumer_processing(
     # Get NATS connection
     nc, js = nats_client
     
+    # Purge AGENT_STATUS stream to remove stale messages from previous tests
+    try:
+        await js.purge_stream("AGENT_STATUS")
+        print("[DEBUG] Purged AGENT_STATUS stream before test")
+    except Exception as e:
+        print(f"[DEBUG] Could not purge stream: {e}")
+    
     # Subscribe to result subject BEFORE publishing
     result_messages = []
+    expected_job_id = sample_job_execution_event["job_id"]
     
     async def result_handler(msg):
-        """Capture result messages."""
+        """Capture result messages, filtering for our specific job_id."""
         data = json.loads(msg.data.decode())
-        result_messages.append(data)
+        # Only capture messages for our specific job_id
+        if data.get("subject") == expected_job_id:
+            result_messages.append(data)
         await msg.ack()
     
-    result_sub = await js.pull_subscribe("agent.status.completed", "test-result-consumer")
+    # Use unique consumer name per test run to avoid stale message issues
+    import uuid
+    unique_consumer = f"test-result-consumer-{uuid.uuid4().hex[:8]}"
+    result_sub = await js.pull_subscribe("agent.status.completed", unique_consumer)
     
     # Subscribe to Dragonfly channel to capture streaming events
     pubsub = redis_client.pubsub()
