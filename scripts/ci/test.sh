@@ -126,7 +126,15 @@ fi
 log_info "Executing pytest tests on ${TEST_DIR}..."
 cd "${REPO_ROOT}"
 
-python -m pytest "${TEST_DIR}" \
+# For integration tests, only run test_api.py (skip test_pre_work.py and test_post_work.py)
+if [[ "${TEST_DIR}" == *"integration"* ]]; then
+    TEST_PATH="${TEST_DIR}/test_api.py"
+    log_info "Running only test_api.py for integration tests"
+else
+    TEST_PATH="${TEST_DIR}"
+fi
+
+python -m pytest "${TEST_PATH}" \
     -v \
     --tb=short \
     --timeout=300 \

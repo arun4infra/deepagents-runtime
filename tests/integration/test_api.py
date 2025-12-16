@@ -1007,7 +1007,8 @@ async def test_cloudevent_processing_end_to_end_success(
         sys.stderr = original_stderr
         
         # Close log file
-        log_file.close()
+        if log_file is not None:
+            log_file.close()
         
         print(f"[LOG_CAPTURE] Logs saved to: {log_filepath}")
 
@@ -1050,13 +1051,15 @@ async def test_nats_consumer_processing(
     """
     Test NATS consumer processes messages and publishes results.
 
-    This test validates the NATS consumer workflow:
+    This test validates the NATS consumer workflow against the DEPLOYED service:
     1. Publish CloudEvent to NATS subject "agent.execute.test"
-    2. NATS consumer picks up the message
+    2. Deployed NATS consumer picks up the message
     3. Consumer executes the agent
     4. Consumer publishes result to "agent.status.completed"
     5. Verify PostgreSQL checkpoints created
     6. Verify Dragonfly streaming events published
+
+    NOTE: This test validates the deployed service's NATS consumer, not a local instance.
 
     References:
         - Requirements: 1.5, 4.1, 4.2, 4.5, 5.1, 5.2, 6.1, 6.2
@@ -1134,36 +1137,81 @@ async def test_nats_consumer_processing(
                     pass
     
     import threading
+    import asyncio
+    
+    # Add cleanup flag for thread
+    stop_capture = threading.Event()
+    
+    def capture_events():
+        """Capture streaming events from Dragonfly pub/sub with proper cleanup."""
+        try:
+            for message in pubsub.listen():
+                if stop_capture.is_set():
+                    break
+                if message['type'] == 'message':
+                    try:
+                        event_data = json.loads(message['data'])
+                        streaming_events.append(event_data)
+                        if event_data.get("event_type") == "end":
+                            break
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            print(f"[DEBUG] Redis capture thread error (expected on cleanup): {e}")
+        finally:
+            try:
+                pubsub.close()
+            except:
+                pass
+    
     capture_thread = threading.Thread(target=capture_events, daemon=True)
     capture_thread.start()
     
-    # Start the FastAPI app with NATS consumer
-    from api.main import app
-    
-    # Import app starts the lifespan which initializes NATS consumer
-    # We need to give it time to start
-    import asyncio
-    await asyncio.sleep(2)
-    
     # Publish CloudEvent to NATS subject "agent.execute.test"
+    # The deployed service's NATS consumer will pick this up from AGENT_EXECUTION stream
     print("\n" + "="*80)
     print("Publishing CloudEvent to NATS subject: agent.execute.test")
+    print(f"Job ID: {sample_job_execution_event['job_id']}")
     print("="*80 + "\n")
     
     cloudevent_payload = json.dumps(sample_cloudevent).encode()
-    await js.publish("agent.execute.test", cloudevent_payload)
+    ack = await js.publish("agent.execute.test", cloudevent_payload)
+    print(f"[DEBUG] Message published to NATS, ack: {ack}")
     
-    # Wait for NATS consumer to process (give it time for real LLM execution)
-    print("Waiting for NATS consumer to process message...")
-    await asyncio.sleep(30)  # Wait for execution to complete
+    # Wait for deployed NATS consumer to process (real LLM execution takes time)
+    print("Waiting for deployed NATS consumer to process message...")
+    print("This may take 3-5 minutes for full agent execution...")
     
-    # Fetch result from NATS
+    # Poll for results with timeout
+    max_wait = 300  # 5 minutes
+    poll_interval = 10  # Check every 10 seconds
+    waited = 0
+    
+    while waited < max_wait and len(result_messages) == 0:
+        await asyncio.sleep(poll_interval)
+        waited += poll_interval
+        
+        # Try to fetch messages
+        try:
+            msgs = await result_sub.fetch(batch=5, timeout=1)
+            for msg in msgs:
+                await result_handler(msg)
+            if result_messages:
+                print(f"[DEBUG] Received result after {waited}s")
+                break
+        except asyncio.TimeoutError:
+            print(f"[DEBUG] Still waiting... ({waited}s elapsed)")
+            continue
+    
+    # Final attempt to fetch any remaining messages
     try:
-        msgs = await result_sub.fetch(batch=1, timeout=5)
+        msgs = await result_sub.fetch(batch=5, timeout=2)
         for msg in msgs:
             await result_handler(msg)
     except asyncio.TimeoutError:
         pass
+    
+    print(f"[DEBUG] Total result messages collected: {len(result_messages)}")
     
     # ================================================================
     # VALIDATION 1: NATS Result CloudEvent
@@ -1238,6 +1286,14 @@ async def test_nats_consumer_processing(
     print(f"  - PostgreSQL checkpoints: {checkpoint_count}")
     print(f"  - Dragonfly events: {len(streaming_events)}")
     print("="*80 + "\n")
+    
+    # Cleanup
+    stop_capture.set()
+    capture_thread.join(timeout=2)
+    try:
+        pubsub.close()
+    except:
+        pass
 
 
 # ============================================================================
