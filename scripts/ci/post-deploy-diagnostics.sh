@@ -55,8 +55,15 @@ echo ""
 # ==============================================================================
 log_info "Checking service deployment..."
 
-if ! kubectl get deployment "${SERVICE_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+# Temporarily disable error trap for kubectl check
+set +e
+DEPLOYMENT_CHECK=$(kubectl get deployment "${SERVICE_NAME}" -n "${NAMESPACE}" 2>&1)
+DEPLOYMENT_EXIT=$?
+set -e
+
+if [ $DEPLOYMENT_EXIT -ne 0 ]; then
     check_failed "Deployment '${SERVICE_NAME}' not found"
+    log_info "DEBUG: kubectl output: ${DEPLOYMENT_CHECK}"
 else
     DESIRED=$(kubectl get deployment "${SERVICE_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}')
     READY=$(kubectl get deployment "${SERVICE_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.readyReplicas}')
