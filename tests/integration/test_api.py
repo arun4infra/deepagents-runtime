@@ -322,6 +322,7 @@ def sample_cloudevent(sample_job_execution_event: Dict[str, Any]) -> Dict[str, A
 # ============================================================================
 
 
+@pytest.mark.timeout(600)  # 10 minutes for full agent execution with real LLM calls
 @pytest.mark.asyncio
 async def test_cloudevent_processing_end_to_end_success(
     postgres_connection: psycopg.Connection,
@@ -578,19 +579,23 @@ async def test_cloudevent_processing_end_to_end_success(
 
         # Wait for event capture to complete
         # The agent needs time to execute with real LLM calls
-        # Wait for "end" event or timeout after 180 seconds (3 minutes max)
-        max_wait = 180
+        # Multi-agent workflow can take 5-8 minutes with real LLM calls
+        max_wait = 480  # 8 minutes
         waited = 0
+        print(f"[DEBUG] Waiting up to {max_wait}s for agent execution to complete...")
         while waited < max_wait:
             if any(e.get("event_type") == "end" for e in streaming_events):
                 print(f"✓ Agent execution completed after {waited} seconds")
                 break
+            if waited % 30 == 0 and waited > 0:  # Progress update every 30s
+                print(f"[DEBUG] Still executing... ({waited}s elapsed, {len(streaming_events)} events so far)")
             time.sleep(1)
             waited += 1
         
         if waited >= max_wait:
             print(f"⚠ Timeout after {max_wait} seconds waiting for completion")
-            assert False, f"Test failed: Agent execution took longer than {max_wait} seconds (3 minutes). This indicates a performance issue or infinite loop."
+            print(f"[DEBUG] Captured {len(streaming_events)} events before timeout")
+            assert False, f"Test failed: Agent execution took longer than {max_wait} seconds (8 minutes). This indicates a performance issue or infinite loop."
         
         # Give a bit more time for final events to be captured
         time.sleep(2)
