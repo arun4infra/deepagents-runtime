@@ -300,8 +300,9 @@ fi
 # ==============================================================================
 log_info "Checking service health endpoints..."
 
-# Disable exit on error for health checks
+# Disable exit on error and error trap for health checks
 set +e
+trap - ERR
 POD_NAME=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${SERVICE_NAME}" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 log_info "DEBUG: Found pod for health check: ${POD_NAME:-<none>}"
 
@@ -339,8 +340,9 @@ else
     check_warning "No pod found to check health endpoints"
 fi
 
-# Re-enable exit on error
+# Re-enable exit on error and error trap
 set -e
+trap 'echo ""; echo "ERROR: Script failed at line $LINENO with exit code $?"; echo "Last command: $BASH_COMMAND"; exit 1' ERR
 
 # ==============================================================================
 # 10. Check KEDA ScaledObject
