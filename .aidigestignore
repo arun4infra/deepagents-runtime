@@ -10,3 +10,4 @@ __pycache__
 .venv
 deepagents_runtime.egg-info
 tests/**/outputs/**
+tests/

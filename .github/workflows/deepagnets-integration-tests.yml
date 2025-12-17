@@ -159,6 +159,15 @@ jobs:
             deepagents-runtime/artifacts/htmlcov/
           retention-days: 30
       
+      - name: Upload test outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-outputs
+          path: |
+            deepagents-runtime/tests/integration/outputs/run_*/
+          retention-days: 30
+      
       - name: Upload debugging artifacts
         if: always()
         uses: actions/upload-artifact@v4
