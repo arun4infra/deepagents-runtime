@@ -292,65 +292,73 @@ def cleanup_mock_workflow(job_id: str):
     print("[MOCK] Mock workflow cleanup completed")
 
 
-def handle_mock_execution(job_id: str, trace_id: str, agent_definition: dict, execution_manager, logger):
+def handle_mock_execution(execution_manager, job_id: str, trace_id: str, agent_definition: dict):
     """
     Handle mock execution by creating mock checkpoints and returning mock result.
     
-    This function is called from the main API when USE_MOCK_LLM=true to bypass
+    This function is called from the execution strategy when USE_MOCK_LLM=true to bypass
     real workflow execution while maintaining the same test validation logic.
     
     Args:
+        execution_manager: Execution manager instance with checkpointer
         job_id: Job ID to use as thread_id for checkpoints
         trace_id: Trace ID for logging
         agent_definition: Agent definition to return in result
-        execution_manager: Execution manager with checkpointer
-        logger: Structured logger
         
     Returns:
         Mock result dictionary matching real execution format
     """
+    from structlog import get_logger
+    logger = get_logger()
     # Create mock checkpoints for test validation using real checkpoint data
     # The test expects checkpoints to exist to validate the workflow
-    if execution_manager and execution_manager.checkpointer:
-        try:
-            # Load mock checkpoints from the test data file
-            import json
-            from pathlib import Path
-            
-            checkpoints_file = Path(__file__).parent.parent / "mock" / "checkpoints.json"
-            if checkpoints_file.exists():
-                with open(checkpoints_file) as f:
-                    mock_checkpoints = json.load(f)
+    try:
+        # Use the provided execution manager directly
+        if execution_manager and execution_manager.checkpointer:
+            try:
+                # Load mock checkpoints from the test data file
+                import json
+                from pathlib import Path
                 
-                # Create a few mock checkpoints with the current job_id
-                for i, checkpoint_data in enumerate(mock_checkpoints[:3]):  # Use first 3 checkpoints
-                    # Update the checkpoint to use current job_id as thread_id
-                    checkpoint_copy = checkpoint_data.copy()
-                    checkpoint_copy["thread_id"] = job_id
+                checkpoints_file = Path(__file__).parent.parent / "mock" / "checkpoints.json"
+                if checkpoints_file.exists():
+                    with open(checkpoints_file) as f:
+                        mock_checkpoints = json.load(f)
                     
-                    # Insert directly into PostgreSQL using raw SQL (simpler than LangGraph API)
-                    import psycopg
-                    conn_str = execution_manager.postgres_connection_string
+                    # Create a few mock checkpoints with the current job_id
+                    for i, checkpoint_data in enumerate(mock_checkpoints[:3]):  # Use first 3 checkpoints
+                        # Update the checkpoint to use current job_id as thread_id
+                        checkpoint_copy = checkpoint_data.copy()
+                        checkpoint_copy["thread_id"] = job_id
+                        
+                        # Insert directly into PostgreSQL using raw SQL (simpler than LangGraph API)
+                        import psycopg
+                        conn_str = execution_manager.postgres_connection_string
+                        
+                        with psycopg.connect(conn_str) as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    INSERT INTO checkpoints (thread_id, checkpoint_id, checkpoint, metadata)
+                                    VALUES (%s, %s, %s, %s)
+                                """, (
+                                    job_id,
+                                    checkpoint_copy["checkpoint_id"],
+                                    json.dumps(checkpoint_copy["checkpoint"]),
+                                    json.dumps(checkpoint_copy["metadata"])
+                                ))
+                            conn.commit()
                     
-                    with psycopg.connect(conn_str) as conn:
-                        with conn.cursor() as cur:
-                            cur.execute("""
-                                INSERT INTO checkpoints (thread_id, checkpoint_id, checkpoint, metadata)
-                                VALUES (%s, %s, %s, %s)
-                            """, (
-                                job_id,
-                                checkpoint_copy["checkpoint_id"],
-                                json.dumps(checkpoint_copy["checkpoint"]),
-                                json.dumps(checkpoint_copy["metadata"])
-                            ))
-                        conn.commit()
+                    logger.info("mock_checkpoints_created", job_id=job_id, trace_id=trace_id, count=min(3, len(mock_checkpoints)))
+                else:
+                    logger.warning("mock_checkpoints_file_not_found", job_id=job_id, trace_id=trace_id, file=str(checkpoints_file))
+                    
+            except Exception as e:
+                logger.warning("mock_checkpoint_creation_failed", job_id=job_id, trace_id=trace_id, error=str(e))
+        else:
+            logger.warning("execution_manager_not_available", job_id=job_id, trace_id=trace_id)
                 
-                logger.info("mock_checkpoints_created", job_id=job_id, trace_id=trace_id, count=min(3, len(mock_checkpoints)))
-            else:
-                logger.warning("mock_checkpoints_file_not_found", job_id=job_id, trace_id=trace_id, file=str(checkpoints_file))
-                
-        except Exception as e:
-            logger.warning("mock_checkpoint_creation_failed", job_id=job_id, trace_id=trace_id, error=str(e))
+    except Exception as e:
+        logger.warning("mock_execution_setup_failed", job_id=job_id, trace_id=trace_id, error=str(e))
     
     # Return a mock result that indicates successful completion
     # The actual mock events will be replayed by the test framework

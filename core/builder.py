@@ -312,8 +312,10 @@ class GraphBuilder:
             
             # Initialize the model object from the identifier string
             # create_deep_agent expects a model object, not a string
-            from langchain.chat_models import init_chat_model
-            orchestrator_model = init_chat_model(orchestrator_model_identifier)
+            # Use ModelFactory for clean separation of mock vs real models
+            from core.model_factory import ModelFactory
+            orchestrator_model = ModelFactory.create_model()
+            logger.info("model_created_via_factory", model_type=type(orchestrator_model).__name__)
             
             main_runnable = create_deep_agent(
                 model=orchestrator_model,
