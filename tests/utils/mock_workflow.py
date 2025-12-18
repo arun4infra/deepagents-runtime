@@ -103,6 +103,7 @@ def get_mock_model_with_event_replay():
         def __init__(self):
             self.model_name = "mock-gpt-4o-mini"
             self.temperature = 0.7
+            self.profile = None  # Required by deepagents library
         
         def invoke(self, messages, **kwargs):
             """Return a proper AIMessage object."""
@@ -207,7 +208,7 @@ def setup_mock_event_replay(redis_client, job_id: str):
 
 def is_mock_mode() -> bool:
     """Check if we're running in mock mode."""
-    return os.getenv("USE_MOCK_LLM", "false").lower() == "true"
+    return os.getenv("USE_MOCK_LLM", "true").lower() == "true"
 
 
 def get_test_model():
