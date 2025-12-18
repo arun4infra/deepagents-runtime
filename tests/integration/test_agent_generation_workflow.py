@@ -193,7 +193,64 @@ def redis_client() -> Generator[redis.Redis, None, None]:
     client.close()
 
 
-# NATS Connection Fixture - REMOVED FOR TEST 1 (Agent Generation Only)
+# NATS Connection Fixture
+@pytest.fixture
+async def nats_client():
+    """
+    Real NATS client for integration testing.
+
+    This fixture connects to the NATS instance and ensures the required
+    streams exist for testing (AGENT_STATUS for result events).
+
+    Yields:
+        tuple: (nats.NATS connection, JetStream context)
+
+    Cleanup:
+        Closes NATS connection after each test
+    """
+    import nats
+    from nats.js.api import StreamConfig
+    
+    # Connect to NATS test instance
+    # Support both local Docker Compose and deployed K8s via environment variables
+    nats_url = os.environ.get("TEST_NATS_URL", "nats://localhost:14222")
+    nc = await nats.connect(nats_url)
+    
+    # Get JetStream context
+    js = nc.jetstream()
+    
+    # Ensure AGENT_STATUS stream exists for capturing result CloudEvents
+    # The CloudEventEmitter publishes to agent.status.completed and agent.status.failed
+    try:
+        await js.stream_info("AGENT_STATUS")
+    except Exception:
+        # Stream doesn't exist, create it
+        await js.add_stream(
+            name="AGENT_STATUS",
+            subjects=["agent.status.*"],
+            retention="limits",
+            max_age=3600,  # 1 hour retention for tests
+            storage="memory",  # Use memory for faster tests
+        )
+    
+    # Ensure AGENT_EXECUTION stream exists for publishing execution requests
+    # The NATS consumer listens to agent.execute.* subjects
+    try:
+        await js.stream_info("AGENT_EXECUTION")
+    except Exception:
+        # Stream doesn't exist, create it
+        await js.add_stream(
+            name="AGENT_EXECUTION",
+            subjects=["agent.execute.*"],
+            retention="limits",
+            max_age=3600,  # 1 hour retention for tests
+            storage="memory",  # Use memory for faster tests
+        )
+    
+    yield nc, js
+    
+    # Cleanup: Close connection (don't delete stream - may be used by other tests)
+    await nc.close()
 
 
 # ============================================================================
@@ -284,9 +341,11 @@ def sample_cloudevent(sample_job_execution_event: Dict[str, Any]) -> Dict[str, A
 # ============================================================================
 
 # Test 1: Agent Generation Workflow (No NATS)
-def test_agent_generation_end_to_end_success(
+@pytest.mark.asyncio
+async def test_agent_generation_end_to_end_success(
     postgres_connection: psycopg.Connection,
     redis_client: redis.Redis,
+    nats_client,
     sample_cloudevent: Dict[str, Any],
     monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -420,7 +479,11 @@ def test_agent_generation_end_to_end_success(
     from dotenv import load_dotenv
     load_dotenv(override=True)
     
-    # NOTE: NATS_URL configuration removed for Test 1 (Agent Generation Only)
+    # CRITICAL: Override NATS_URL after .env loading to use test environment
+    # The .env file contains nats://nats.nats.svc:4222 which doesn't exist in test env
+    test_nats_url = os.environ.get("TEST_NATS_URL", "nats://localhost:14222")
+    monkeypatch.setenv("NATS_URL", test_nats_url)
+    print(f"[DEBUG] CRITICAL: Set NATS_URL to {test_nats_url} (overriding .env file)")
 
     # Subscribe to Redis channel BEFORE execution to capture all events
     print("[DEBUG] Setting up Redis pub/sub...")
@@ -869,9 +932,11 @@ def test_agent_generation_end_to_end_success(
 
 
 # Test 2: Fixtures Configuration Test
-def test_fixtures_are_properly_configured(
+@pytest.mark.asyncio
+async def test_fixtures_are_properly_configured(
     postgres_connection: psycopg.Connection,
     redis_client: redis.Redis,
+    nats_client,
     sample_agent_definition: Dict[str, Any],
     sample_job_execution_event: Dict[str, Any],
     sample_cloudevent: Dict[str, Any]
@@ -896,6 +961,10 @@ def test_fixtures_are_properly_configured(
     redis_client.set("test_key", "test_value")
     assert redis_client.get("test_key") == "test_value", "Redis connection test failed"
     redis_client.delete("test_key")
+    
+    # Test NATS connection
+    nc, js = nats_client
+    assert nc.is_connected, "NATS connection test failed"
     
     # Test sample data
     assert "job_id" in sample_job_execution_event, "sample_job_execution_event missing job_id"
