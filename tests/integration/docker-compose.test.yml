@@ -39,20 +39,17 @@ services:
     ports:
       - "14222:4222"  # NATS client port
       - "18222:8222"  # NATS monitoring port
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8222/healthz || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   nats-setup:
     image: natsio/nats-box:latest
     container_name: agent-executor-nats-setup
     depends_on:
-      nats:
-        condition: service_healthy
+      - nats
     command: |
       sh -c "
+        echo 'Waiting for NATS to be ready...'
+        sleep 5
+        
         echo 'Setting up NATS streams...'
         nats --server=nats://nats:4222 stream add AGENT_EXECUTION \
           --subjects='agent.execute.*' \
