@@ -59,15 +59,13 @@ jobs:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_pass
           POSTGRES_SCHEMA: public
+          MIGRATION_DIR: ./migrations
         run: |
           # Wait for postgres to be ready
           until pg_isready -h localhost -p 15433 -U test_user; do sleep 1; done
-          # Run migrations (assuming you have a migration script)
-          python -c "
-          import asyncio
-          from core.database import get_database_url, run_migrations
-          asyncio.run(run_migrations(get_database_url()))
-          "
+          # Use the purpose-built migration script
+          chmod +x scripts/ci/run-migrations.sh
+          ./scripts/ci/run-migrations.sh
       
       - name: Start FastAPI Application
         env:
