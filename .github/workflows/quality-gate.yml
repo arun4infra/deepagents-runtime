@@ -6,9 +6,9 @@ name: Quality Gate
 # adding new quality check workflows (linting, unit tests, security scans, etc.).
 
 on:
-  # Trigger after integration tests complete
+  # Trigger after both test workflows complete
   workflow_run:
-    workflows: ["DeepAgents Integration Tests"]
+    workflows: ["Spec Generation Tests", "NATS Events Integration Tests"]
     types: [completed]
     branches: [main]
   # Allow manual trigger for testing

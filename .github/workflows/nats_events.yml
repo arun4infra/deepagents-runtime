@@ -1,4 +1,4 @@
-name: DeepAgents Integration Tests
+name: NATS Events Integration Tests
 
 on:
   push:
@@ -38,8 +38,8 @@ permissions:
   pull-requests: write # Required to comment on PRs
 
 jobs:
-  integration-tests:
-    name: Run Integration Tests
+  nats-events-tests:
+    name: Run NATS Events Tests
     runs-on: ubuntu-latest  # 4 CPU, 16GB RAM for platform setup
     timeout-minutes: 45
     
@@ -130,7 +130,7 @@ jobs:
           chmod +x scripts/ci/post-deploy-diagnostics.sh
           ./scripts/ci/post-deploy-diagnostics.sh intelligence-deepagents deepagents-runtime
       
-      - name: Run Integration Tests
+      - name: Run NATS Events Integration Tests
         id: run_tests
         working-directory: deepagents-runtime
         env:
@@ -139,7 +139,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           chmod +x scripts/ci/test.sh
-          ./scripts/ci/test.sh tests/integration
+          ./scripts/ci/test.sh tests/integration/test_nats_events_integration.py
       
       - name: Cleanup Preview Environment
         if: always()
