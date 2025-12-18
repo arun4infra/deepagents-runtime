@@ -67,34 +67,6 @@ jobs:
           chmod +x scripts/ci/run-migrations.sh
           ./scripts/ci/run-migrations.sh
       
-      - name: Setup NATS Streams
-        run: |
-          # Wait for NATS to be ready
-          timeout 30 bash -c 'until curl -f http://localhost:18222/healthz; do sleep 2; done'
-          
-          # Create required NATS JetStream streams
-          curl -X POST http://localhost:18222/jsz/api/v1/streams \
-            -H "Content-Type: application/json" \
-            -d '{
-              "name": "AGENT_EXECUTION",
-              "subjects": ["agent.execute.*"],
-              "retention": "limits",
-              "max_age": 3600000000000,
-              "storage": "memory"
-            }' || echo "Stream creation may have failed, continuing..."
-          
-          curl -X POST http://localhost:18222/jsz/api/v1/streams \
-            -H "Content-Type: application/json" \
-            -d '{
-              "name": "AGENT_STATUS", 
-              "subjects": ["agent.status.*"],
-              "retention": "limits",
-              "max_age": 3600000000000,
-              "storage": "memory"
-            }' || echo "Stream creation may have failed, continuing..."
-          
-          echo "NATS streams setup completed"
-
       - name: Start FastAPI Application
         env:
           POSTGRES_HOST: localhost

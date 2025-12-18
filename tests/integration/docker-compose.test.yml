@@ -40,10 +40,41 @@ services:
       - "14222:4222"  # NATS client port
       - "18222:8222"  # NATS monitoring port
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8222/healthz || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  nats-setup:
+    image: natsio/nats-box:latest
+    container_name: agent-executor-nats-setup
+    depends_on:
+      nats:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo 'Setting up NATS streams...'
+        nats --server=nats://nats:4222 stream add AGENT_EXECUTION \
+          --subjects='agent.execute.*' \
+          --retention=limits \
+          --max-age=1h \
+          --storage=memory \
+          --replicas=1 \
+          --no-confirm || echo 'AGENT_EXECUTION stream creation failed'
+        
+        nats --server=nats://nats:4222 stream add AGENT_STATUS \
+          --subjects='agent.status.*' \
+          --retention=limits \
+          --max-age=1h \
+          --storage=memory \
+          --replicas=1 \
+          --no-confirm || echo 'AGENT_STATUS stream creation failed'
+        
+        echo 'Verifying streams...'
+        nats --server=nats://nats:4222 stream list
+        echo 'NATS streams setup completed'
+      "
+    restart: "no"
 
 volumes:
   postgres_test_data:
