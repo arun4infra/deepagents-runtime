@@ -828,21 +828,17 @@ async def test_agent_generation_end_to_end_success(
             # "THE Agent Executor SHALL use the `job_id` from the `JobExecutionEvent`
             #  as the `thread_id` for the LangGraph execution."
 
-            # Skip checkpoint validation in mock mode since mock execution handles checkpoints differently
-            from tests.utils.test_config import TestConfig
-            if not TestConfig.is_mock_mode():
-                assert len(checkpoints) > 0, \
-                    "Req 3.1 VIOLATION: At least one checkpoint must be written to PostgreSQL"
+            # Checkpoint validation enabled for both mock and real modes
+            assert len(checkpoints) > 0, \
+                "Req 3.1 VIOLATION: At least one checkpoint must be written to PostgreSQL"
 
-                # Verify thread_id = job_id for ALL checkpoints
-                for checkpoint in checkpoints:
-                    thread_id = checkpoint["thread_id"]
+            # Verify thread_id = job_id for ALL checkpoints
+            for checkpoint in checkpoints:
+                thread_id = checkpoint["thread_id"]
 
-                    assert thread_id == sample_job_execution_event["job_id"], \
-                        f"Req 3.1 VIOLATION: thread_id must equal job_id. " \
-                        f"Expected '{sample_job_execution_event['job_id']}', got '{thread_id}'"
-            else:
-                print(f"[MOCK MODE] Skipping checkpoint validation - found {len(checkpoints)} checkpoints")
+                assert thread_id == sample_job_execution_event["job_id"], \
+                    f"Req 3.1 VIOLATION: thread_id must equal job_id. " \
+                    f"Expected '{sample_job_execution_event['job_id']}', got '{thread_id}'"
 
             # ================================================================
             # REQ 3.3: Checkpoints saved after each step
@@ -852,14 +848,10 @@ async def test_agent_generation_end_to_end_success(
             #  a Checkpoint to the Primary Data Store after the completion of each
             #  operational step within the graph."
 
-            # Skip checkpoint validation in mock mode since mock execution handles checkpoints differently
-            from tests.utils.test_config import TestConfig
-            if not TestConfig.is_mock_mode():
-                assert len(checkpoints) >= 1, \
-                    f"Req 3.3: Expected at least one checkpoint after graph step execution, " \
-                    f"got {len(checkpoints)}"
-            else:
-                print(f"[MOCK MODE] Skipping Req 3.3 checkpoint validation - found {len(checkpoints)} checkpoints")
+            # Checkpoint validation enabled for both mock and real modes
+            assert len(checkpoints) >= 1, \
+                f"Req 3.3: Expected at least one checkpoint after graph step execution, " \
+                f"got {len(checkpoints)}"
 
             # Verify checkpoint contains state data
             for checkpoint in checkpoints:
@@ -1394,21 +1386,17 @@ async def test_agent_generation_end_to_end_success(
         # "THE Agent Executor SHALL use the `job_id` from the `JobExecutionEvent`
         #  as the `thread_id` for the LangGraph execution."
 
-        # Skip checkpoint validation in mock mode since mock execution handles checkpoints differently
-        from tests.utils.test_config import TestConfig
-        if not TestConfig.is_mock_mode():
-            assert len(checkpoints) > 0, \
-                "Req 3.1 VIOLATION: At least one checkpoint must be written to PostgreSQL"
+        # Checkpoint validation enabled for both mock and real modes
+        assert len(checkpoints) > 0, \
+            "Req 3.1 VIOLATION: At least one checkpoint must be written to PostgreSQL"
 
-            # Verify thread_id = job_id for ALL checkpoints
-            for checkpoint in checkpoints:
-                thread_id = checkpoint["thread_id"]
+        # Verify thread_id = job_id for ALL checkpoints
+        for checkpoint in checkpoints:
+            thread_id = checkpoint["thread_id"]
 
-                assert thread_id == sample_job_execution_event["job_id"], \
-                    f"Req 3.1 VIOLATION: thread_id must equal job_id. " \
-                    f"Expected '{sample_job_execution_event['job_id']}', got '{thread_id}'"
-        else:
-            print(f"[MOCK MODE] Skipping checkpoint validation - found {len(checkpoints)} checkpoints")
+            assert thread_id == sample_job_execution_event["job_id"], \
+                f"Req 3.1 VIOLATION: thread_id must equal job_id. " \
+                f"Expected '{sample_job_execution_event['job_id']}', got '{thread_id}'"
 
         # ================================================================
         # REQ 3.3: Checkpoints saved after each step
@@ -1418,14 +1406,10 @@ async def test_agent_generation_end_to_end_success(
         #  a Checkpoint to the Primary Data Store after the completion of each
         #  operational step within the graph."
 
-        # Skip checkpoint validation in mock mode since mock execution handles checkpoints differently
-        from tests.utils.test_config import TestConfig
-        if not TestConfig.is_mock_mode():
-            assert len(checkpoints) >= 1, \
-                f"Req 3.3: Expected at least one checkpoint after graph step execution, " \
-                f"got {len(checkpoints)}"
-        else:
-            print(f"[MOCK MODE] Skipping Req 3.3 checkpoint validation - found {len(checkpoints)} checkpoints")
+        # Checkpoint validation enabled for both mock and real modes
+        assert len(checkpoints) >= 1, \
+            f"Req 3.3: Expected at least one checkpoint after graph step execution, " \
+            f"got {len(checkpoints)}"
 
         # Verify checkpoint contains state data
         for checkpoint in checkpoints:
