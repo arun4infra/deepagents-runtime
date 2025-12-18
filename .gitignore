@@ -12,3 +12,6 @@ codebase.md
 dev
 tests/integration/outputs
 tests/utils/outputs
+# Mock data from private repo (submodule content)
+tests/mock/
+!tests/mock/.gitkeep
