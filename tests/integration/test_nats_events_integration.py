@@ -40,6 +40,7 @@ class TestNATSEventsIntegration:
     async def nats_connection(self):
         """Create NATS connection for testing."""
         nats_url = "nats://nats.nats.svc:4222"
+        nc = None  # Initialize before try block
         
         try:
             nc = await nats.connect(nats_url, connect_timeout=10)
