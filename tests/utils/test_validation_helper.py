@@ -2,7 +2,7 @@
 Test the validate_workflow_result helper function.
 """
 
-from tests.integration.test_helpers import validate_workflow_result
+from tests.utils.test_helpers import validate_workflow_result
 
 
 def test_validate_workflow_result_success():

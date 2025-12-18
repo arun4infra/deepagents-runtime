@@ -11,3 +11,4 @@ deepagents_runtime.egg-info
 codebase.md
 dev
 tests/integration/outputs
+tests/utils/outputs

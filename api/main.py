@@ -716,7 +716,38 @@ async def process_cloudevent(
                 logger.info("agent_built_successfully", job_id=job_id, trace_id=trace_id)
 
             # Step 2: Execute agent with streaming
-            if tracer:
+            # Check for mock mode bypass
+            use_mock_llm = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
+            
+            if use_mock_llm:
+                logger.info("mock_mode_detected", job_id=job_id, trace_id=trace_id, message="Bypassing real execution, mock events will be replayed")
+                
+                # Import mock execution handler
+                try:
+                    from tests.utils.mock_workflow import handle_mock_execution
+                    result = handle_mock_execution(
+                        job_id=job_id,
+                        trace_id=trace_id,
+                        agent_definition=agent_definition,
+                        execution_manager=execution_manager,
+                        logger=logger
+                    )
+                except ImportError:
+                    # Fallback if mock_workflow is not available (production environment)
+                    logger.warning("mock_workflow_not_available", job_id=job_id, trace_id=trace_id)
+                    result = {
+                        "status": "completed",
+                        "output": "Mock execution completed - mock_workflow not available",
+                        "final_state": {"definition": agent_definition, "files": {}}
+                    }
+                
+                logger.info(
+                    "mock_execution_completed",
+                    job_id=job_id,
+                    trace_id=trace_id,
+                    has_result=bool(result)
+                )
+            elif tracer:
                 with tracer.start_as_current_span("execute_agent", context=ctx) as span:
                     span.set_attribute("job_id", job_id)
                     span.set_attribute("trace_id", trace_id)

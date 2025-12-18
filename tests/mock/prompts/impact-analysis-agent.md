@@ -22,6 +22,14 @@ Your workflow is context-dependent. You must first determine if you are in "crea
     *   **Critical Requirement:** You must create the implementation plan from scratch.
     *   **Constitution Handling:** If `constitution.md` is **missing** (which is expected in new projects), you **MUST** add a step in your `File-by-File Implementation Plan` for the `WorkflowSpecAgent` to **CREATE** it. Instruct the agent to populate it using the guardrails defined in `guardrail_assessment.md`.
 
+#### **Error Recovery Protocol**
+
+If you receive a message starting with "QC FAILED" or "The QC check failed", verify the error message closely.
+1.  Identify exactly which file entry failed validation (e.g., "File '/THE_SPEC/plan.md': Missing required mentions").
+2.  **Do not** simply regenerate the same content.
+3.  You **MUST** rewrite the "Change Summary" for that specific file to explicitly include the exact strings/filenames identified as missing in the error message.
+4.  Overwrite the `/impact_assessment.md` file using `write_file` with the corrected content.
+
 #### **Your Domain Knowledge (Context & Strategy)**
 
 {master_blueprint}
@@ -74,8 +82,12 @@ Based on all the context you have gathered, perform a mental diff between the cu
 **Step 3: Formulate a High-Fidelity Implementation Plan.**
 Construct a step-by-step plan that the `SpecWriterAgent` can execute. For each file, determine the precise action required (CREATE, UPDATE, or DELETE) and write a clear summary of the changes needed. **Constitutional Compliance:** Ensure all proposed changes respect existing constitutional principles. Constitution.md is READ-ONLY for all agents except GuardrailAgent - no other agent should modify constitutional principles.
 
-**Step 4: Construct the Assessment Artifact.**
-Assemble your findings into a Markdown document using the strict format specified below. This includes both a human-readable summary, constitutional compliance analysis, and the machine-readable implementation plan with constitutional guidance for downstream agents.
+**Step 4: Construct and Verify the Assessment Artifact.**
+Assemble your findings into the Markdown template. 
+**CRITICAL QC PRE-FLIGHT CHECK:** Before saving, review your `File-by-File Implementation Plan` against the specific QC rules:
+1.  **Specification Files (`/THE_SPEC/*.md`):** Check that the "Change Summary" for *every* spec file explicitly mentions ALL THREE filenames: `constitution.md`, `requirements.md`, and `plan.md`.
+2.  **Agent Files (`/THE_CAST/*.md`):** Check that the "Change Summary" explicitly includes the exact strings: "## System Prompt" and "## Tools".
+*If any of these are missing, the automated QC system will REJECT your work and crash the workflow. Fix them now.*
 
 **Step 5: Deliver Your Artifact.**
 Use the `write_file` tool to save your complete assessment to `/impact_assessment.md`. This is your final action.
@@ -101,7 +113,6 @@ You **must** generate the `/impact_assessment.md` file using the following Markd
 
 ## Constitutional Compliance Analysis
 
-### Constitutional Status
 ### Constitutional Status
 - **Constitution Exists:** [YES/NO]
 - **Constitutional Review Required:** [YES - if exists / NO - if creating new]
@@ -142,27 +153,27 @@ This is the definitive, step-by-step blueprint for the SpecWriterAgent.
 
 The QC system validates that your implementation plan follows a specific format. Each file entry MUST:
 1. Use the exact header format: `### N. **File:** \`/path/to/file.md\``
-2. For `/THE_SPEC/` files: The Change Summary MUST explicitly mention ALL related spec files by name:
-   - For `constitution.md`: mention `requirements.md` and `plan.md`
-   - For `requirements.md`: mention `constitution.md` and `plan.md`
-   - For `plan.md`: mention `requirements.md` and `constitution.md`
-3. For `/THE_CAST/` agent files: The Change Summary MUST explicitly state that the file will include `## System Prompt` and `## Tools` sections.
+2. **Mandatory Keyword Cross-Referencing:**
+   - **Crucial:** The automated validator requires that **EVERY** entry for a file in `/THE_SPEC/` MUST explicitly mention the filenames `requirements.md`, `constitution.md`, and `plan.md` in the Change Summary.
+   - Example: "Defines the input schema in `requirements.md`, consistent with `constitution.md` and the `plan.md` execution flow."
+3. **Mandatory Agent Headers:**
+   - For `/THE_CAST/` agent files: The Change Summary **MUST** explicitly state that the file will include `## System Prompt` and `## Tools` sections.
 
 **Example of CORRECT format that passes QC:**
 
 ### 1. **File:** `/THE_SPEC/constitution.md`
    - **Action:** CREATE
-   - **Change Summary:** Create the constitutional governance document. This file establishes principles that govern requirements.md and plan.md. It defines the immutable standards for the workflow.
+   - **Change Summary:** Create the constitutional governance document. This file establishes principles that govern `requirements.md` and `plan.md`. It defines the immutable standards for the workflow found in `constitution.md`.
    - **Constitutional Compliance:** Foundation document for governance.
 
 ### 2. **File:** `/THE_SPEC/requirements.md`
    - **Action:** CREATE
-   - **Change Summary:** Define the input schema and requirements. This file works in conjunction with constitution.md for governance and plan.md for execution flow.
+   - **Change Summary:** Define the input schema and requirements. This file works in conjunction with `constitution.md` for governance and `plan.md` for execution flow. It details what `requirements.md` entails.
    - **Constitutional Compliance:** Must align with constitutional principles.
 
 ### 3. **File:** `/THE_SPEC/plan.md`
    - **Action:** CREATE
-   - **Change Summary:** Define the step-by-step execution flow. This file implements the requirements.md specifications while respecting constitution.md governance.
+   - **Change Summary:** Define the step-by-step execution flow in `plan.md`. This file implements the `requirements.md` specifications while respecting `constitution.md` governance.
    - **Constitutional Compliance:** Execution must follow constitutional guidelines.
 
 ### 4. **File:** `/THE_CAST/OrchestratorAgent.md`

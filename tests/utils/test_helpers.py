@@ -742,13 +742,27 @@ def generate_execution_summary(
     summary_lines.extend([
         "",
         f"PostgreSQL Checkpoints: {len(checkpoints)}",
-        f"CloudEvents Emitted: 1 ({cloudevent.get('type', 'unknown')})",
-        "",
-        "Agent Definition Summary:",
-        f"  Nodes: {len(cloudevent.get('data', {}).get('result', {}).get('final_state', {}).get('definition', {}).get('nodes', []))}",
-        f"  Status: {cloudevent.get('data', {}).get('result', {}).get('status', 'unknown')}",
-        "=" * 80,
     ])
+    
+    # Handle CloudEvent (may be None in Test 1 - Agent Generation Only)
+    if cloudevent:
+        summary_lines.extend([
+            f"CloudEvents Emitted: 1 ({cloudevent.get('type', 'unknown')})",
+            "",
+            "Agent Definition Summary:",
+            f"  Nodes: {len(cloudevent.get('data', {}).get('result', {}).get('final_state', {}).get('definition', {}).get('nodes', []))}",
+            f"  Status: {cloudevent.get('data', {}).get('result', {}).get('status', 'unknown')}",
+        ])
+    else:
+        summary_lines.extend([
+            "CloudEvents Emitted: 0 (Test 1 - Agent Generation Only)",
+            "",
+            "Agent Definition Summary: Available in workflow result",
+        ])
+    
+    summary_lines.append("=" * 80)
+    
+    return "\n".join(summary_lines)
     
     return "\n".join(summary_lines)
 

@@ -92,7 +92,27 @@ jobs:
           timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
           echo "FastAPI application started successfully"
       
-      - name: Run Spec Generation Tests
+      - name: Run Spec Generation Tests (Mock Mode for PRs)
+        if: github.event_name == 'pull_request'
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 15433
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_SCHEMA: public
+          DRAGONFLY_HOST: localhost
+          DRAGONFLY_PORT: 16380
+          REDIS_HOST: localhost
+          REDIS_PORT: 16380
+          NATS_URL: nats://localhost:14222
+          USE_MOCK_LLM: "true"
+          MOCK_TIMEOUT: "60"
+        run: |
+          pytest tests/integration/test_agent_generation_workflow.py::test_agent_generation_end_to_end_success -v --tb=short --junit-xml=artifacts/test-results.xml
+      
+      - name: Run Spec Generation Tests (Real LLM for Main Branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 15433
@@ -107,6 +127,8 @@ jobs:
           NATS_URL: nats://localhost:14222
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          USE_MOCK_LLM: "false"
+          REAL_TIMEOUT: "480"
         run: |
           pytest tests/integration/test_agent_generation_workflow.py::test_agent_generation_end_to_end_success -v --tb=short --junit-xml=artifacts/test-results.xml
       

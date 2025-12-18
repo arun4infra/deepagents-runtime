@@ -269,7 +269,7 @@ def sample_agent_definition() -> Dict[str, Any]:
     Returns:
         Dictionary containing agent definition with prompts and tools loaded from files
     """
-    from tests.integration.test_helpers import load_definition_with_files
+    from tests.utils.test_helpers import load_definition_with_files
     
     definition_path = Path(__file__).parent.parent / "mock" / "definition.json"
     return load_definition_with_files(definition_path)
@@ -642,7 +642,7 @@ async def test_cloudevent_processing_end_to_end_success(
         # ================================================================
         # IMPORT HELPERS AFTER TEST EXECUTION
         # ================================================================
-        from tests.integration.test_helpers import (
+        from tests.utils.test_helpers import (
             extract_checkpoints,
             extract_specialist_timeline,
             generate_checkpoint_summary,

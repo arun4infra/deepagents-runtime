@@ -7,7 +7,7 @@ This script tests the helper functions without requiring full integration test s
 import json
 from pathlib import Path
 
-from tests.integration.test_helpers import (
+from tests.utils.test_helpers import (
     CRITICAL_GUARANTEES,
     TYPICAL_GUARANTEES,
     extract_specialist_timeline,
