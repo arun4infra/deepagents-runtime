@@ -117,8 +117,17 @@ class ExecutionFactory:
         """
         if execution_manager is None:
             raise ValueError("Execution manager is required for all execution strategies")
-            
-        if TestConfig.is_mock_mode():
+        
+        # Debug logging to track what's happening
+        import os
+        mock_env = os.getenv("USE_MOCK_LLM", "not_set")
+        is_mock = TestConfig.is_mock_mode()
+        print(f"[EXECUTION_FACTORY] USE_MOCK_LLM env var: '{mock_env}'")
+        print(f"[EXECUTION_FACTORY] TestConfig.is_mock_mode(): {is_mock}")
+        
+        if is_mock:
+            print(f"[EXECUTION_FACTORY] Creating MockExecutionStrategy")
             return MockExecutionStrategy(execution_manager)
         else:
+            print(f"[EXECUTION_FACTORY] Creating RealExecutionStrategy")
             return RealExecutionStrategy(execution_manager)

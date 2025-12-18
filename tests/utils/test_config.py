@@ -15,7 +15,10 @@ class TestConfig:
     @staticmethod
     def is_mock_mode() -> bool:
         """Check if tests should run in mock LLM mode."""
-        return os.getenv("USE_MOCK_LLM", "false").lower() == "true"
+        env_value = os.getenv("USE_MOCK_LLM", "false")
+        result = env_value.lower() == "true"
+        print(f"[TEST_CONFIG] is_mock_mode() called: USE_MOCK_LLM='{env_value}' -> {result}")
+        return result
     
     @staticmethod
     def get_mock_timeout() -> int:
