@@ -104,6 +104,7 @@ def get_mock_model_with_event_replay():
             self.model_name = "mock-gpt-4o-mini"
             self.temperature = 0.7
             self.profile = None  # Required by deepagents library
+            self._llm_type = "openai-chat"  # Required by LangChain middleware
         
         def invoke(self, messages, **kwargs):
             """Return a proper AIMessage object."""
