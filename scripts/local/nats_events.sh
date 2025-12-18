@@ -1,0 +1,249 @@
+#!/bin/bash
+set -euo pipefail
+
+# ==============================================================================
+# Local NATS Events Integration Tests Script
+# ==============================================================================
+# Purpose: Run the same steps as .github/workflows/nats_events.yml locally
+# Usage: ./scripts/local/nats_events.sh [--platform-branch <branch>]
+#
+# Prerequisites:
+# 1. .env file with required environment variables
+# 2. zerotouch-platform directory exists alongside deepagents-runtime
+# 3. Docker, kubectl, and Kind installed
+# 4. AWS credentials configured (if not using mocks)
+# ==============================================================================
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+PLATFORM_DIR="$WORKSPACE_ROOT/zerotouch-platform"
+ARTIFACTS_DIR="$REPO_ROOT/artifacts"
+LOGS_DIR="$SCRIPT_DIR/logs"
+
+# Default values
+PLATFORM_BRANCH="main"
+TIMEOUT_MINUTES=45
+
+# Create logs directory and setup logging
+mkdir -p "$LOGS_DIR"
+LOG_FILE="$LOGS_DIR/nats_events_$(date +%Y%m%d_%H%M%S).log"
+
+# Redirect all output to log file while keeping console output
+exec > >(tee -a "$LOG_FILE")
+exec 2> >(tee -a "$LOG_FILE" >&2)
+
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
+
+# Enhanced error handling
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+    log_error "Script failed at line $line_number with exit code $exit_code"
+    log_error "Last command: $BASH_COMMAND"
+    log_error "Full log available at: $LOG_FILE"
+    exit $exit_code
+}
+
+trap 'error_handler $LINENO' ERR
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --platform-branch)
+            PLATFORM_BRANCH="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--platform-branch <branch>]"
+            echo ""
+            echo "Options:"
+            echo "  --platform-branch  Branch of zerotouch-platform to use (default: main)"
+            echo "  --help, -h         Show this help message"
+            echo ""
+            echo "Prerequisites:"
+            echo "  1. .env file with required environment variables"
+            echo "  2. zerotouch-platform directory at: $PLATFORM_DIR"
+            echo "  3. Docker, kubectl, and Kind installed"
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Cleanup function
+cleanup() {
+    local exit_code=$?
+    log_info "Cleaning up..."
+    
+    # Cleanup preview environment if it exists
+    if [ -d "$PLATFORM_DIR" ] && [ -f "$PLATFORM_DIR/scripts/bootstrap/cleanup-preview.sh" ]; then
+        log_info "Running platform cleanup..."
+        cd "$PLATFORM_DIR"
+        chmod +x scripts/bootstrap/cleanup-preview.sh
+        ./scripts/bootstrap/cleanup-preview.sh || log_warning "Platform cleanup failed"
+    fi
+    
+    cd "$REPO_ROOT"
+    log_info "Log file saved at: $LOG_FILE"
+    exit $exit_code
+}
+
+trap cleanup EXIT INT TERM
+
+echo "================================================================================"
+echo "NATS Events Integration Tests - Local Execution"
+echo "================================================================================"
+echo "  Platform Branch: $PLATFORM_BRANCH"
+echo "  Workspace:       $WORKSPACE_ROOT"
+echo "  Platform Dir:    $PLATFORM_DIR"
+echo "  Artifacts Dir:   $ARTIFACTS_DIR"
+echo "================================================================================"
+
+# Step 1: Load environment variables
+log_info "Loading environment variables from .env..."
+if [ -f "$REPO_ROOT/.env" ]; then
+    # Export variables from .env file
+    set -a  # automatically export all variables
+    source "$REPO_ROOT/.env"
+    set +a  # stop automatically exporting
+    log_success "Environment variables loaded from .env"
+else
+    log_error ".env file not found at $REPO_ROOT/.env"
+    exit 1
+fi
+
+# Step 2: Validate prerequisites
+log_info "Validating prerequisites..."
+
+# Check if zerotouch-platform exists
+if [ ! -d "$PLATFORM_DIR" ]; then
+    log_error "zerotouch-platform repository not found at: $PLATFORM_DIR"
+    exit 1
+fi
+
+# Check required tools
+MISSING_TOOLS=()
+for tool in docker kubectl kind; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        MISSING_TOOLS+=("$tool")
+    fi
+done
+
+if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+    log_error "Missing required tools:"
+    printf '  - %s\n' "${MISSING_TOOLS[@]}"
+    exit 1
+fi
+
+log_success "Prerequisites validated"
+
+# Step 3: Create artifacts directory
+mkdir -p "$ARTIFACTS_DIR"
+
+# Step 4: Use existing zerotouch-platform (skip git operations)
+log_info "Using existing zerotouch-platform at: $PLATFORM_DIR"
+if [ "$PLATFORM_BRANCH" != "main" ]; then
+    log_info "Note: Platform branch specified as '$PLATFORM_BRANCH' but using existing checkout"
+fi
+log_success "Platform directory validated"
+
+# Step 5: Export AWS credentials as environment variables (if provided)
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+    log_info "Exporting AWS credentials..."
+    export AWS_ACCESS_KEY_ID
+    export AWS_SECRET_ACCESS_KEY
+    export AWS_SESSION_TOKEN
+    log_success "AWS credentials exported"
+else
+    log_warning "AWS credentials not provided - some steps may fail"
+fi
+
+# Step 6: Set up Python environment
+log_info "Setting up Python environment..."
+cd "$REPO_ROOT"
+
+# Check if we're in a virtual environment, if not create one
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+    log_info "Creating Python virtual environment..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+    log_success "Virtual environment activated"
+else
+    log_info "Using existing virtual environment: $VIRTUAL_ENV"
+fi
+
+# Install dependencies
+log_info "Installing Python dependencies..."
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+log_success "Python dependencies installed"
+
+# Step 7: Bootstrap Platform Preview Environment
+log_info "Bootstrapping platform preview environment..."
+cd "$PLATFORM_DIR"
+chmod +x scripts/bootstrap/01-master-bootstrap.sh
+./scripts/bootstrap/01-master-bootstrap.sh --mode preview
+log_success "Platform preview environment bootstrapped"
+
+# Step 8: Build Docker Image
+log_info "Building Docker image..."
+cd "$REPO_ROOT"
+chmod +x scripts/ci/build.sh
+./scripts/ci/build.sh --mode=test
+log_success "Docker image built and loaded into Kind cluster"
+
+# Step 9: Apply Preview Patches
+log_info "Applying preview patches..."
+chmod +x scripts/patches/00-apply-all-patches.sh
+./scripts/patches/00-apply-all-patches.sh --force
+log_success "Preview patches applied"
+
+# Step 10: Pre-Deploy Diagnostics
+log_info "Running pre-deploy diagnostics..."
+chmod +x scripts/ci/pre-deploy-diagnostics.sh
+./scripts/ci/pre-deploy-diagnostics.sh
+log_success "Pre-deploy diagnostics completed"
+
+# Step 11: Deploy Service
+log_info "Deploying service..."
+export ZEROTOUCH_PLATFORM_DIR="$PLATFORM_DIR"
+chmod +x scripts/ci/deploy.sh
+./scripts/ci/deploy.sh preview
+log_success "Service deployed successfully"
+
+# Step 12: Post-Deploy Diagnostics
+log_info "Running post-deploy diagnostics..."
+chmod +x scripts/ci/post-deploy-diagnostics.sh
+./scripts/ci/post-deploy-diagnostics.sh intelligence-deepagents deepagents-runtime
+log_success "Post-deploy diagnostics completed"
+
+# Step 13: Run NATS Events Integration Tests
+log_info "Running NATS Events Integration Tests..."
+export ZEROTOUCH_PLATFORM_DIR="$PLATFORM_DIR"
+export USE_MOCK_LLM="${USE_MOCK_LLM:-true}"
+export MOCK_TIMEOUT="${MOCK_TIMEOUT:-60}"
+
+chmod +x scripts/ci/test.sh
+./scripts/ci/test.sh tests/integration/test_nats_events_integration.py
+log_success "NATS Events Integration Tests completed"
+
+echo "================================================================================"
+log_success "NATS Events Integration Tests completed successfully!"
+log_info "Log file saved at: $LOG_FILE"
+echo "================================================================================"
