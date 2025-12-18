@@ -45,32 +45,33 @@ services:
     container_name: agent-executor-nats-setup
     depends_on:
       - nats
-    command: |
-      sh -c "
+    command: 
+      - sh
+      - -c
+      - |
         echo 'Waiting for NATS to be ready...'
-        sleep 5
+        sleep 2
         
         echo 'Setting up NATS streams...'
         nats --server=nats://nats:4222 stream add AGENT_EXECUTION \
-          --subjects='agent.execute.*' \
+          --subjects="agent.execute.*" \
           --retention=limits \
           --max-age=1h \
           --storage=memory \
           --replicas=1 \
-          --no-confirm || echo 'AGENT_EXECUTION stream creation failed'
+          --defaults || echo 'AGENT_EXECUTION stream creation failed'
         
         nats --server=nats://nats:4222 stream add AGENT_STATUS \
-          --subjects='agent.status.*' \
+          --subjects="agent.status.*" \
           --retention=limits \
           --max-age=1h \
           --storage=memory \
           --replicas=1 \
-          --no-confirm || echo 'AGENT_STATUS stream creation failed'
+          --defaults || echo 'AGENT_STATUS stream creation failed'
         
         echo 'Verifying streams...'
         nats --server=nats://nats:4222 stream list
         echo 'NATS streams setup completed'
-      "
     restart: "no"
 
 volumes:
