@@ -1,6 +1,7 @@
 #!/bin/bash
 # Downsize PostgreSQL instance for preview environments
-# Reduces: medium → small (250m-1000m CPU, 512Mi-2Gi RAM, 20GB storage)
+# Reduces: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)
+# Storage: 20GB → 10GB for Kind clusters
 
 set -e
 
@@ -37,12 +38,26 @@ if [ "$IS_PREVIEW_MODE" = true ]; then
     POSTGRES_CLAIM="$REPO_ROOT/platform/claims/intelligence-deepagents/postgres-claim.yaml"
     
     if [ -f "$POSTGRES_CLAIM" ]; then
+        # Downsize from medium to micro (for Kind clusters, go directly to micro)
         if grep -q "size: medium" "$POSTGRES_CLAIM" 2>/dev/null; then
-            sed -i.bak 's/size: medium/size: small/g' "$POSTGRES_CLAIM"
+            sed -i.bak 's/size: medium/size: micro/g' "$POSTGRES_CLAIM"
             rm -f "$POSTGRES_CLAIM.bak"
-            echo -e "${GREEN}✓${NC} PostgreSQL: medium → small (250m-1000m CPU, 512Mi-2Gi RAM)"
+            echo -e "${GREEN}✓${NC} PostgreSQL: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)"
+        elif grep -q "size: small" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/size: small/size: micro/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "${GREEN}✓${NC} PostgreSQL: small → micro (100m-500m CPU, 256Mi-1Gi RAM)"
         else
-            echo -e "${YELLOW}⊘${NC} PostgreSQL already at small/micro size"
+            echo -e "${YELLOW}⊘${NC} PostgreSQL already at micro size"
+        fi
+        
+        # Reduce storage for Kind clusters (minimum 10GB required)
+        if grep -q "storageGB: 20" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/storageGB: 20/storageGB: 10/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "${GREEN}✓${NC} PostgreSQL storage: 20GB → 10GB"
+        else
+            echo -e "${YELLOW}⊘${NC} PostgreSQL storage already optimized"
         fi
     else
         echo -e "${RED}✗${NC} PostgreSQL claim not found: $POSTGRES_CLAIM"

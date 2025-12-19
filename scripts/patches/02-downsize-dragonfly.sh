@@ -1,6 +1,7 @@
 #!/bin/bash
 # Downsize Dragonfly instance for preview environments
-# Reduces: medium → micro (100m-500m CPU, 256Mi-1Gi RAM, 10GB storage)
+# Reduces: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)
+# Storage: 10GB → 5GB for Kind clusters
 
 set -e
 
@@ -37,12 +38,22 @@ if [ "$IS_PREVIEW_MODE" = true ]; then
     DRAGONFLY_CLAIM="$REPO_ROOT/platform/claims/intelligence-deepagents/dragonfly-claim.yaml"
     
     if [ -f "$DRAGONFLY_CLAIM" ]; then
+        # Downsize to micro
         if grep -q "size: medium" "$DRAGONFLY_CLAIM" 2>/dev/null; then
             sed -i.bak 's/size: medium/size: micro/g' "$DRAGONFLY_CLAIM"
             rm -f "$DRAGONFLY_CLAIM.bak"
             echo -e "${GREEN}✓${NC} Dragonfly: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)"
         else
             echo -e "${YELLOW}⊘${NC} Dragonfly already at micro size"
+        fi
+        
+        # Reduce storage for Kind clusters (minimum 5GB required)
+        if grep -q "storageGB: 10" "$DRAGONFLY_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/storageGB: 10/storageGB: 5/g' "$DRAGONFLY_CLAIM"
+            rm -f "$DRAGONFLY_CLAIM.bak"
+            echo -e "${GREEN}✓${NC} Dragonfly storage: 10GB → 5GB"
+        else
+            echo -e "${YELLOW}⊘${NC} Dragonfly storage already optimized"
         fi
     else
         echo -e "${RED}✗${NC} Dragonfly claim not found: $DRAGONFLY_CLAIM"
