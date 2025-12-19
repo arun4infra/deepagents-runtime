@@ -29,9 +29,6 @@ REDIS_HOST = os.environ.get("TEST_REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("TEST_REDIS_PORT", "16380")
 REDIS_PASSWORD = os.environ.get("TEST_REDIS_PASSWORD", None)
 
-# Other Configuration
-DISABLE_VAULT_AUTH = "true"
-
 # ============================================================================
 # SET ENVIRONMENT VARIABLES
 # ============================================================================
@@ -39,7 +36,6 @@ DISABLE_VAULT_AUTH = "true"
 # This ensures CloudEventEmitter, NATSConsumer, and other components
 # read the correct URLs when they're initialized during app startup
 
-os.environ["DISABLE_VAULT_AUTH"] = DISABLE_VAULT_AUTH
 os.environ["NATS_URL"] = NATS_URL
 
 os.environ["POSTGRES_HOST"] = POSTGRES_HOST

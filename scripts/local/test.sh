@@ -39,7 +39,6 @@ fi
 # Set test environment variables
 export TESTING=true
 export LOG_LEVEL="${LOG_LEVEL:-info}"
-export DISABLE_VAULT_AUTH="${DISABLE_VAULT_AUTH:-true}"
 
 if [ -n "${TEST_DIR}" ]; then
     # Run specific test directory

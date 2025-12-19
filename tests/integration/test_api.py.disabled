@@ -1246,7 +1246,6 @@ async def test_nats_consumer_processing(
     print(f"[DEBUG] Service status: {'running' if nats_consumer_service.poll() is None else 'terminated'}")
     
     # Set ALL required environment variables - use TEST_* env vars if available
-    monkeypatch.setenv("DISABLE_VAULT_AUTH", "true")
     monkeypatch.setenv("NATS_URL", os.environ.get("TEST_NATS_URL", "nats://localhost:14222"))
     
     # PostgreSQL configuration - use TEST_* env vars if available

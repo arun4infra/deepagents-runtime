@@ -30,7 +30,6 @@ fi
 # Set default local environment variables
 export PORT="${PORT:-8080}"
 export LOG_LEVEL="${LOG_LEVEL:-debug}"
-export DISABLE_VAULT_AUTH="${DISABLE_VAULT_AUTH:-true}"
 
 echo ""
 echo "→ Starting service with hot-reload..."

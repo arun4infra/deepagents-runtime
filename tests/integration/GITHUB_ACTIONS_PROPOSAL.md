@@ -65,7 +65,6 @@ All test configuration is set inside `run-tests.sh`:
 - `POSTGRES_HOST=localhost`, `POSTGRES_PORT=15433`
 - `DRAGONFLY_HOST=localhost`, `DRAGONFLY_PORT=16380`
 - `NATS_URL=nats://localhost:14222`
-- `DISABLE_VAULT_AUTH=true`, `TESTING=true`
 
 ## Prerequisites
 
