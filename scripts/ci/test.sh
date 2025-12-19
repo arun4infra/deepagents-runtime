@@ -82,21 +82,22 @@ if [[ "${TEST_DIR}" == *"integration"* ]]; then
         local remote_port=$4
         local name=$5
         
-        log_info "Starting port-forward for $name ($local_port -> $remote_port)..."
+        # All logging to stderr, only PID to stdout
+        log_info "Starting port-forward for $name ($local_port -> $remote_port)..." >&2
         
         # Kill any existing process on the port
         local existing_pids=$(lsof -ti:$local_port 2>/dev/null || true)
         if [ ! -z "$existing_pids" ]; then
-            log_info "  Killing existing processes on port $local_port: $existing_pids"
+            log_info "  Killing existing processes on port $local_port: $existing_pids" >&2
             echo "$existing_pids" | xargs kill -9 2>/dev/null || true
         fi
         sleep 1
         
         # Check if service exists and is ready
         local service_name=${service#svc/}  # Remove svc/ prefix if present
-        log_info "  Checking service availability: $service_name in namespace $namespace"
+        log_info "  Checking service availability: $service_name in namespace $namespace" >&2
         if ! kubectl get service -n $namespace $service_name >/dev/null 2>&1; then
-            log_error "  Service $service_name not found in namespace $namespace"
+            log_error "  Service $service_name not found in namespace $namespace" >&2
             return 1
         fi
         
@@ -105,31 +106,31 @@ if [[ "${TEST_DIR}" == *"integration"* ]]; then
         local attempt=1
         
         while [ $attempt -le $max_attempts ]; do
-            log_info "  Attempt $attempt/$max_attempts for $name..."
+            log_info "  Attempt $attempt/$max_attempts for $name..." >&2
             
             # Start port-forward
             kubectl port-forward -n $namespace $service $local_port:$remote_port >/dev/null 2>&1 &
             local pid=$!
             
-            log_info "  Started kubectl port-forward (PID: $pid)"
+            log_info "  Started kubectl port-forward (PID: $pid)" >&2
             
             # Wait and test the connection
             sleep 5
             
             # Check if process is still running
             if ! kill -0 $pid 2>/dev/null; then
-                log_error "  Port-forward process $pid died immediately"
+                log_error "  Port-forward process $pid died immediately" >&2
                 ((attempt++))
                 continue
             fi
             
             # Test connection
             if nc -z localhost $local_port 2>/dev/null; then
-                log_info "  ✅ $name port-forward successful (PID: $pid)"
+                log_info "  ✅ $name port-forward successful (PID: $pid)" >&2
                 echo $pid
                 return 0
             else
-                log_error "  ❌ $name port-forward connection test failed"
+                log_error "  ❌ $name port-forward connection test failed" >&2
                 kill $pid 2>/dev/null || true
                 sleep 2
             fi
@@ -137,7 +138,7 @@ if [[ "${TEST_DIR}" == *"integration"* ]]; then
             ((attempt++))
         done
         
-        log_error "Failed to establish $name port-forward after $max_attempts attempts"
+        log_error "Failed to establish $name port-forward after $max_attempts attempts" >&2
         return 1
     }
     
