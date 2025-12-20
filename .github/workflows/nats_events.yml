@@ -11,7 +11,14 @@ on:
       - 'scripts/ci/**'
       - 'tests/integration/test_nats_events_integration.py'
   pull_request:
-    branches: [main, develop, master]
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - '.github/workflows/nats_events.yml'
+      - 'scripts/ci/**'
+      - 'tests/integration/test_nats_events_integration.py'
   workflow_dispatch:
 
 permissions:
