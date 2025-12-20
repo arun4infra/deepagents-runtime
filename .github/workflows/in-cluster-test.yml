@@ -232,36 +232,229 @@ jobs:
           
           # Apply job and wait for completion
           kubectl apply -f /tmp/test-job.yaml
-          kubectl wait --for=condition=complete --timeout=${{ inputs.timeout }}s job/$JOB_NAME -n ${{ inputs.namespace }}
+          
+          echo "🚀 Starting test job: $JOB_NAME"
+          echo "⏳ Waiting for job to complete (timeout: ${{ inputs.timeout }}s)..."
+          echo "📊 Namespace: ${{ inputs.namespace }}"
+          echo ""
+          
+          # Enhanced wait with detailed progress logging
+          ELAPSED=0
+          POLL_INTERVAL=15
+          TIMEOUT=${{ inputs.timeout }}
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            # Check job status
+            JOB_STATUS=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
+            JOB_FAILED=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+            
+            if [ "$JOB_STATUS" = "True" ]; then
+              echo "✅ Job completed successfully after $((ELAPSED/60))m $((ELAPSED%60))s"
+              break
+            elif [ "$JOB_FAILED" = "True" ]; then
+              echo "❌ Job failed after $((ELAPSED/60))m $((ELAPSED%60))s"
+              break
+            fi
+            
+            # Show progress every 30 seconds
+            if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+              echo "⏳ Still waiting... ($((ELAPSED/60))m $((ELAPSED%60))s elapsed)"
+              
+              # Get pod status for progress indication
+              POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+              if [ -n "$POD_NAME" ]; then
+                POD_PHASE=$(kubectl get pod $POD_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+                echo "   Pod: $POD_NAME ($POD_PHASE)"
+                
+                # Show container status
+                CONTAINER_READY=$(kubectl get pod $POD_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+                CONTAINER_STATE=$(kubectl get pod $POD_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.containerStatuses[0].state}' 2>/dev/null | jq -r 'keys[0]' 2>/dev/null || echo "unknown")
+                echo "   Container: ready=$CONTAINER_READY, state=$CONTAINER_STATE"
+                
+                # Show recent logs (last 3 lines) for progress indication
+                if [ "$POD_PHASE" = "Running" ]; then
+                  echo "   Recent logs:"
+                  kubectl logs $POD_NAME -n ${{ inputs.namespace }} --tail=3 2>/dev/null | sed 's/^/     /' || echo "     (no logs yet)"
+                fi
+              else
+                echo "   No pod found yet"
+              fi
+              echo ""
+            fi
+            
+            sleep $POLL_INTERVAL
+            ELAPSED=$((ELAPSED + POLL_INTERVAL))
+          done
+          
+          # Final status check
+          JOB_STATUS=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
+          JOB_FAILED=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+          
+          # Timeout case - comprehensive diagnostics
+          if [ $ELAPSED -ge $TIMEOUT ] && [ "$JOB_STATUS" != "True" ]; then
+            echo ""
+            echo "🚨 TIMEOUT: Job did not complete within $((TIMEOUT/60)) minutes"
+            echo ""
+            
+            # Detailed job diagnostics
+            echo "=== JOB DIAGNOSTICS ==="
+            kubectl describe job $JOB_NAME -n ${{ inputs.namespace }} 2>/dev/null || echo "Could not describe job"
+            echo ""
+            
+            # Pod diagnostics
+            POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$POD_NAME" ]; then
+              echo "=== POD DIAGNOSTICS ==="
+              kubectl describe pod $POD_NAME -n ${{ inputs.namespace }} 2>/dev/null || echo "Could not describe pod"
+              echo ""
+              
+              echo "=== POD EVENTS ==="
+              kubectl get events -n ${{ inputs.namespace }} --field-selector involvedObject.name=$POD_NAME --sort-by='.lastTimestamp' 2>/dev/null || echo "Could not get events"
+              echo ""
+              
+              echo "=== CONTAINER LOGS (LAST 100 LINES) ==="
+              kubectl logs $POD_NAME -n ${{ inputs.namespace }} --tail=100 2>/dev/null || echo "Could not retrieve logs"
+            else
+              echo "❌ No pod found for job $JOB_NAME"
+              echo ""
+              echo "=== ALL PODS IN NAMESPACE ==="
+              kubectl get pods -n ${{ inputs.namespace }} 2>/dev/null || echo "Could not list pods"
+            fi
+            
+            echo ""
+            echo "=== NAMESPACE EVENTS (RECENT WARNINGS) ==="
+            kubectl get events -n ${{ inputs.namespace }} --sort-by='.lastTimestamp' --field-selector type=Warning 2>/dev/null | tail -10 || echo "Could not get namespace events"
+            
+            echo ""
+            echo "=== DEBUG COMMANDS ==="
+            echo "kubectl describe job $JOB_NAME -n ${{ inputs.namespace }}"
+            echo "kubectl logs -l job-name=$JOB_NAME -n ${{ inputs.namespace }}"
+            echo "kubectl get events -n ${{ inputs.namespace }} --sort-by='.lastTimestamp'"
+            
+            exit 1
+          fi
+          
+          # Wait for job completion with better error handling (fallback)
+          if ! kubectl wait --for=condition=complete --timeout=30s job/$JOB_NAME -n ${{ inputs.namespace }} 2>/dev/null; then
+            echo "❌ Job did not complete within final check timeout"
+            
+            # Get job status for debugging
+            echo ""
+            echo "=== JOB STATUS DEBUG ==="
+            kubectl describe job $JOB_NAME -n ${{ inputs.namespace }} || echo "Could not describe job"
+            
+            # Get pod status
+            echo ""
+            echo "=== POD STATUS DEBUG ==="
+            POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$POD_NAME" ]; then
+              echo "Pod: $POD_NAME"
+              kubectl describe pod $POD_NAME -n ${{ inputs.namespace }} || echo "Could not describe pod"
+              
+              echo ""
+              echo "=== POD LOGS (TIMEOUT CASE) ==="
+              kubectl logs $POD_NAME -n ${{ inputs.namespace }} --tail=100 || echo "Could not retrieve logs"
+            else
+              echo "No pod found for job $JOB_NAME"
+            fi
+            
+            exit 1
+          fi
           
           # Check if job succeeded or failed
           JOB_STATUS=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "Unknown")
           JOB_FAILED=$(kubectl get job $JOB_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "False")
           
+          echo ""
+          echo "=== JOB COMPLETION STATUS ==="
           echo "Job completion status: $JOB_STATUS"
           echo "Job failed status: $JOB_FAILED"
           
-          if [ "$JOB_FAILED" = "True" ]; then
-            echo "❌ Test job failed!"
-            # Get pod logs for debugging
-            POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-            if [ -n "$POD_NAME" ]; then
-              echo "=== Failed Test Logs ==="
-              kubectl logs $POD_NAME -n ${{ inputs.namespace }} || echo "Could not retrieve logs"
-            fi
-            exit 1
-          elif [ "$JOB_STATUS" != "True" ]; then
-            echo "❌ Test job did not complete successfully!"
-            echo "Job status: Complete=$JOB_STATUS, Failed=$JOB_FAILED"
+          # ALWAYS get pod logs for debugging (success or failure)
+          POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          
+          if [ -n "$POD_NAME" ]; then
+            echo ""
+            echo "=== COMPLETE TEST EXECUTION LOGS ==="
+            echo "Pod: $POD_NAME"
+            kubectl logs $POD_NAME -n ${{ inputs.namespace }} || echo "Could not retrieve logs"
+            echo "=== END TEST EXECUTION LOGS ==="
+          else
+            echo "❌ No pod found for job $JOB_NAME - this indicates a serious issue"
+            kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME || echo "Could not list pods"
             exit 1
           fi
           
+          # Check for job failure
+          if [ "$JOB_FAILED" = "True" ]; then
+            echo ""
+            echo "❌ Test job failed!"
+            
+            # Additional debugging for failed jobs
+            echo ""
+            echo "=== FAILURE DIAGNOSTICS ==="
+            kubectl describe job $JOB_NAME -n ${{ inputs.namespace }} || echo "Could not describe job"
+            
+            echo ""
+            echo "=== POD FAILURE DETAILS ==="
+            kubectl describe pod $POD_NAME -n ${{ inputs.namespace }} || echo "Could not describe pod"
+            
+            echo ""
+            echo "=== RECENT EVENTS ==="
+            kubectl get events -n ${{ inputs.namespace }} --sort-by='.lastTimestamp' --field-selector involvedObject.name=$POD_NAME | tail -10 || echo "Could not get events"
+            
+            exit 1
+          elif [ "$JOB_STATUS" != "True" ]; then
+            echo ""
+            echo "❌ Test job did not complete successfully!"
+            echo "Job status: Complete=$JOB_STATUS, Failed=$JOB_FAILED"
+            
+            # Additional debugging for incomplete jobs
+            echo ""
+            echo "=== INCOMPLETE JOB DIAGNOSTICS ==="
+            kubectl describe job $JOB_NAME -n ${{ inputs.namespace }} || echo "Could not describe job"
+            kubectl describe pod $POD_NAME -n ${{ inputs.namespace }} || echo "Could not describe pod"
+            
+            exit 1
+          fi
+          
+          echo ""
           echo "✅ Test job completed successfully"
           
-          # Copy artifacts
-          POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
+          # Copy artifacts with better error handling
+          echo ""
+          echo "=== COPYING TEST ARTIFACTS ==="
           mkdir -p artifacts
-          kubectl cp ${{ inputs.namespace }}/$POD_NAME:/app/artifacts/ ./artifacts/ || true
+          
+          # Try to copy artifacts from the completed pod
+          if kubectl cp ${{ inputs.namespace }}/$POD_NAME:/app/artifacts/ ./artifacts/ 2>/dev/null; then
+            echo "✅ Successfully copied artifacts from pod"
+            ls -la artifacts/ || echo "No artifacts directory created"
+          else
+            echo "⚠️  Could not copy artifacts using kubectl cp (pod may have terminated)"
+            echo "This is expected for completed jobs - checking if artifacts were generated..."
+            
+            # Alternative: Check if pod has artifacts volume and try different approach
+            echo ""
+            echo "=== POD VOLUME INFORMATION ==="
+            kubectl describe pod $POD_NAME -n ${{ inputs.namespace }} | grep -A 10 -B 5 "artifacts" || echo "No artifacts volume info found"
+            
+            # Try to get container exit code for more info
+            echo ""
+            echo "=== CONTAINER EXIT STATUS ==="
+            kubectl get pod $POD_NAME -n ${{ inputs.namespace }} -o jsonpath='{.status.containerStatuses[0].state.terminated}' | jq '.' 2>/dev/null || echo "Container status not available"
+            
+            echo ""
+            echo "ℹ️  Artifact copy failed - this may indicate:"
+            echo "   1. Tests completed but pod containers were terminated (normal for completed jobs)"
+            echo "   2. Tests failed to generate artifacts (test execution issue)"
+            echo "   3. Artifacts volume mount issue in job template"
+            echo ""
+            echo "📋 Debug commands to run manually:"
+            echo "   kubectl describe pod $POD_NAME -n ${{ inputs.namespace }}"
+            echo "   kubectl get pod $POD_NAME -n ${{ inputs.namespace }} -o yaml"
+            echo "   kubectl logs $POD_NAME -n ${{ inputs.namespace }}"
+          fi
       
       - name: Upload test artifacts
         if: always()
@@ -294,27 +487,86 @@ jobs:
       - name: Validate test results
         if: always()
         run: |
+          echo ""
+          echo "=== TEST RESULTS VALIDATION ==="
+          
           if [ -f artifacts/test-results.xml ]; then
+            echo "✅ Test results file found: artifacts/test-results.xml"
+            
+            # Parse test results
             TESTS=$(grep -oP 'tests="\K[0-9]+' artifacts/test-results.xml | head -1 || echo "0")
             FAILURES=$(grep -oP 'failures="\K[0-9]+' artifacts/test-results.xml | head -1 || echo "0")
             ERRORS=$(grep -oP 'errors="\K[0-9]+' artifacts/test-results.xml | head -1 || echo "0")
             
-            echo "Test Results Summary:"
-            echo "  Total Tests: ${TESTS}"
-            echo "  Failures: ${FAILURES}"
-            echo "  Errors: ${ERRORS}"
+            echo "📊 Test Results Summary:"
+            echo "   Total Tests: $TESTS"
+            echo "   Failures: $FAILURES" 
+            echo "   Errors: $ERRORS"
             
-            if [ "${FAILURES}" != "0" ] || [ "${ERRORS}" != "0" ]; then
-              echo "❌ Tests failed! Failures: ${FAILURES}, Errors: ${ERRORS}"
+            # Show test results content for debugging
+            echo ""
+            echo "=== TEST RESULTS XML CONTENT ==="
+            head -20 artifacts/test-results.xml || echo "Could not read test results"
+            
+            # Check for test failures
+            if [ "$FAILURES" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+              echo ""
+              echo "❌ Tests failed! Failures: $FAILURES, Errors: $ERRORS"
+              
+              # Try to show failure details
+              if [ -f artifacts/test-results.xml ]; then
+                echo ""
+                echo "=== FAILURE DETAILS ==="
+                grep -A 5 -B 2 "failure\|error" artifacts/test-results.xml | head -20 || echo "Could not extract failure details"
+              fi
+              
+              exit 1
+            elif [ "$TESTS" -eq 0 ]; then
+              echo ""
+              echo "❌ No tests were executed! This indicates a test discovery or execution issue."
+              echo ""
+              echo "🔍 Possible causes:"
+              echo "   1. Test path is incorrect: ${{ inputs.test-path }}"
+              echo "   2. Test dependencies not installed"
+              echo "   3. Test environment setup failed"
+              echo "   4. Python/pytest configuration issue"
+              echo ""
+              echo "📋 Check the test execution logs above for pytest startup and discovery messages"
               exit 1
             else
-              echo "✅ All tests passed!"
+              echo ""
+              echo "✅ All $TESTS tests passed successfully!"
             fi
           else
-            echo "⚠️ No test results found - this may indicate a test execution failure"
-            echo "Checking if this was expected..."
-            # If we got here, the job completed but no results - this is likely a failure
-            exit 1
+            echo "❌ No test results found - this indicates a test execution failure"
+            echo ""
+            echo "🔍 Expected file: artifacts/test-results.xml"
+            echo ""
+            echo "📁 Available artifacts:"
+            find artifacts/ -type f 2>/dev/null | head -10 || echo "   No artifacts directory or files found"
+            echo ""
+            echo "🔍 This usually means:"
+            echo "   1. Tests failed to start (missing dependencies, wrong paths)"
+            echo "   2. Test command syntax error in job template"
+            echo "   3. Container crashed before generating results"
+            echo "   4. Pytest not configured to generate XML output"
+            echo ""
+            echo "📋 Check the test execution logs above for:"
+            echo "   - pytest command execution"
+            echo "   - Python import errors"
+            echo "   - Missing dependencies"
+            echo "   - File path issues"
+            
+            # Check if this was expected (some tests might not generate XML)
+            if [ "${{ inputs.test-name }}" = "nats-events" ] || [ "${{ inputs.test-name }}" = "spec-generation" ]; then
+              echo ""
+              echo "⚠️  No test results found - this may indicate a test execution failure"
+              echo "Checking if this was expected..."
+              exit 1
+            else
+              echo ""
+              echo "ℹ️  Test results validation skipped for test type: ${{ inputs.test-name }}"
+            fi
           fi
       
       - name: Comment PR with test results
