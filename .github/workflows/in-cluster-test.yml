@@ -197,7 +197,6 @@ jobs:
           USE_REAL_LLM: ${{ inputs.use-real-llm }}
           USE_MOCK_LLM: ${{ inputs.use-real-llm == false && 'true' || 'false' }}
           MOCK_TIMEOUT: "60"
-          ZEROTOUCH_PLATFORM_DIR: "./zerotouch-platform"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # Database credentials from K8s secrets (will be available in pod)
@@ -215,6 +214,11 @@ jobs:
               -e "s/{{IMAGE}}/deepagents-runtime:${{ inputs.image-tag }}/g" \
               -e "s|{{TEST_PATH}}|${{ inputs.test-path }}|g" \
               -e "s/{{TEST_NAME}}/${{ inputs.test-name }}/g" \
+              -e "s/{{USE_MOCK_LLM}}/${USE_MOCK_LLM}/g" \
+              -e "s/{{USE_REAL_LLM}}/${USE_REAL_LLM}/g" \
+              -e "s/{{MOCK_TIMEOUT}}/${MOCK_TIMEOUT}/g" \
+              -e "s/{{OPENAI_API_KEY}}/${OPENAI_API_KEY:-mock-key-for-testing}/g" \
+              -e "s/{{ANTHROPIC_API_KEY}}/${ANTHROPIC_API_KEY:-mock-key-for-testing}/g" \
               scripts/ci/test-job-template.yaml > /tmp/test-job.yaml
           
           # Apply job and wait for completion

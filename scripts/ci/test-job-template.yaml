@@ -8,6 +8,11 @@
 # - {{IMAGE}}: Docker image to use
 # - {{TEST_PATH}}: Path to test files
 # - {{TEST_NAME}}: Test suite name
+# - {{USE_MOCK_LLM}}: Whether to use mock LLM (true/false)
+# - {{USE_REAL_LLM}}: Whether to use real LLM (true/false)
+# - {{MOCK_TIMEOUT}}: Timeout for mock operations
+# - {{OPENAI_API_KEY}}: OpenAI API key (real or mock)
+# - {{ANTHROPIC_API_KEY}}: Anthropic API key (real or mock)
 # ==============================================================================
 
 apiVersion: batch/v1
@@ -80,12 +85,16 @@ spec:
           value: "nats://nats.nats.svc:4222"
         # Test configuration
         - name: USE_MOCK_LLM
-          value: "true"
+          value: "{{USE_MOCK_LLM}}"
+        - name: USE_REAL_LLM
+          value: "{{USE_REAL_LLM}}"
         - name: MOCK_TIMEOUT
-          value: "60"
-        # OpenAI API key (for mock mode, can be dummy)
+          value: "{{MOCK_TIMEOUT}}"
+        # OpenAI API key (can be real or mock depending on test mode)
         - name: OPENAI_API_KEY
-          value: "mock-key-for-testing"
+          value: "{{OPENAI_API_KEY}}"
+        - name: ANTHROPIC_API_KEY
+          value: "{{ANTHROPIC_API_KEY}}"
         command: 
         - "/bin/bash"
         - "-c"
