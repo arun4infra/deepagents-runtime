@@ -16,7 +16,7 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 PLATFORM_DIR="$WORKSPACE_ROOT/zerotouch-platform"
 ARTIFACTS_DIR="$REPO_ROOT/artifacts"
@@ -91,13 +91,14 @@ cleanup() {
     local exit_code=$?
     log_info "Cleaning up..."
     
-    # Cleanup preview environment if it exists
-    if [ -d "$PLATFORM_DIR" ] && [ -f "$PLATFORM_DIR/scripts/bootstrap/cleanup-preview.sh" ]; then
-        log_info "Running platform cleanup..."
-        cd "$PLATFORM_DIR"
-        chmod +x scripts/bootstrap/cleanup-preview.sh
-        ./scripts/bootstrap/cleanup-preview.sh || log_warning "Platform cleanup failed"
-    fi
+    # COMMENTED OUT FOR DEBUGGING - Keep cluster running to investigate issues
+    # # Cleanup preview environment if it exists
+    # if [ -d "$PLATFORM_DIR" ] && [ -f "$PLATFORM_DIR/scripts/bootstrap/cleanup-preview.sh" ]; then
+    #     log_info "Running platform cleanup..."
+    #     cd "$PLATFORM_DIR"
+    #     chmod +x scripts/bootstrap/cleanup-preview.sh
+    #     ./scripts/bootstrap/cleanup-preview.sh || log_warning "Platform cleanup failed"
+    # fi
     
     # Clean up fresh platform directory
     FRESH_PLATFORM_DIR="$WORKSPACE_ROOT/zerotouch-platform-fresh"
@@ -108,6 +109,7 @@ cleanup() {
     
     cd "$REPO_ROOT"
     log_info "Log file saved at: $LOG_FILE"
+    log_info "Cluster kept running for debugging - use 'kind delete cluster zerotouch-preview' to clean up manually"
     exit $exit_code
 }
 
@@ -269,8 +271,65 @@ export ZEROTOUCH_PLATFORM_DIR="$PLATFORM_DIR"
 export USE_MOCK_LLM="${USE_MOCK_LLM:-true}"
 export MOCK_TIMEOUT="${MOCK_TIMEOUT:-60}"
 
-chmod +x scripts/ci/test.sh
-./scripts/ci/test.sh tests/integration/test_nats_events_integration.py
+log_info "Deploying in-cluster test job..."
+kubectl delete job nats-integration-tests -n intelligence-deepagents --ignore-not-found=true
+kubectl apply -f scripts/ci/test-job.yaml
+
+log_info "Waiting for test job to complete..."
+TIMEOUT=600
+ELAPSED=0
+INTERVAL=10
+
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    JOB_STATUS=$(kubectl get job nats-integration-tests -n intelligence-deepagents -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "")
+    
+    if [ "$JOB_STATUS" = "Complete" ]; then
+        log_success "Job completed successfully after ${ELAPSED}s"
+        break
+    elif [ "$JOB_STATUS" = "Failed" ]; then
+        log_error "Job failed after ${ELAPSED}s"
+        break
+    else
+        POD_STATUS=$(kubectl get pods -n intelligence-deepagents -l job-name=nats-integration-tests -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+        READY_COUNT=$(kubectl get pods -n intelligence-deepagents -l job-name=nats-integration-tests -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        
+        log_info "[${ELAPSED}s/${TIMEOUT}s] Job: ${JOB_STATUS:-Pending}, Pod: ${POD_STATUS}, Ready: ${READY_COUNT}"
+        
+        if [ "$POD_STATUS" = "Running" ]; then
+            log_info "Recent logs:"
+            kubectl logs -n intelligence-deepagents -l job-name=nats-integration-tests --tail=5 2>/dev/null | sed 's/^/  /' || echo "  No logs available yet"
+        fi
+    fi
+    
+    sleep $INTERVAL
+    ELAPSED=$((ELAPSED + INTERVAL))
+done
+
+if [ $ELAPSED -ge $TIMEOUT ]; then
+    log_error "Job timed out after ${TIMEOUT}s"
+    kubectl describe job nats-integration-tests -n intelligence-deepagents
+    kubectl describe pods -n intelligence-deepagents -l job-name=nats-integration-tests
+    exit 1
+fi
+
+log_info "Getting test results..."
+kubectl logs job/nats-integration-tests -n intelligence-deepagents
+
+# Copy artifacts from the job pod
+POD_NAME=$(kubectl get pods -n intelligence-deepagents -l job-name=nats-integration-tests -o jsonpath='{.items[0].metadata.name}')
+if [ ! -z "$POD_NAME" ]; then
+    log_info "Copying artifacts from pod: $POD_NAME"
+    mkdir -p "$ARTIFACTS_DIR"
+    kubectl cp intelligence-deepagents/$POD_NAME:/app/artifacts/ "$ARTIFACTS_DIR/" || log_warning "No artifacts to copy"
+fi
+
+# Check if job succeeded
+JOB_STATUS=$(kubectl get job nats-integration-tests -n intelligence-deepagents -o jsonpath='{.status.conditions[0].type}')
+if [ "$JOB_STATUS" != "Complete" ]; then
+    log_error "Test job failed"
+    exit 1
+fi
+
 log_success "NATS Events Integration Tests completed"
 
 echo "================================================================================"

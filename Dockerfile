@@ -16,32 +16,32 @@ WORKDIR /app
 # Install uv for fast dependency management
 RUN pip install --no-cache-dir uv
 
-# Copy pyproject.toml for dependency installation
+# Copy pyproject.toml and README for dependency installation
 COPY pyproject.toml ./pyproject.toml
+COPY README.md ./README.md
 
-# Install system dependencies for psycopg v3 and psql client (for migrations)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    libpq-dev \
-    postgresql-client \
-    gcc \
-    && uv pip install --system --no-cache -r pyproject.toml \
-    && apt-get purge -y --auto-remove gcc libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy application code (root is agent_executor package per pyproject.toml)
+# Copy application code first (needed for editable install)
 COPY api/ ./api/
 COPY core/ ./core/
 COPY services/ ./services/
 COPY models/ ./models/
 COPY observability/ ./observability/
 COPY __init__.py ./__init__.py
-
-# Copy migrations directory (required by init container)
 COPY migrations/ ./migrations/
-
-# Copy Tier 3 scripts (for CI entrypoint)
+COPY tests/ ./tests/
+COPY platform/ ./platform/
 COPY scripts/ ./scripts/
+
+# Install system dependencies for psycopg v3 and psql client (for migrations)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libpq-dev \
+    postgresql-client \
+    curl \
+    gcc \
+    && uv pip install --system --no-cache -e ".[dev]" \
+    && apt-get purge -y --auto-remove gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set ownership to non-root user
 RUN chown -R appuser:appuser /app && \

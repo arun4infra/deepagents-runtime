@@ -1,0 +1,123 @@
+# ==============================================================================
+# Centralized In-Cluster Test Job Template
+# ==============================================================================
+# This template is used by the in-cluster-test.sh script to create test jobs
+# Variables are substituted at runtime:
+# - {{JOB_NAME}}: Unique job name
+# - {{NAMESPACE}}: Target namespace
+# - {{IMAGE}}: Docker image to use
+# - {{TEST_PATH}}: Path to test files
+# - {{TEST_NAME}}: Test suite name
+# ==============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{JOB_NAME}}"
+  namespace: "{{NAMESPACE}}"
+  labels:
+    app: deepagents-runtime-tests
+    test-type: integration
+    test-suite: "{{TEST_NAME}}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: deepagents-runtime-tests
+        test-type: integration
+        test-suite: "{{TEST_NAME}}"
+    spec:
+      containers:
+      - name: test-runner
+        image: "{{IMAGE}}"
+        workingDir: /app
+        env:
+        # Database credentials from K8s secrets
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_DB
+        # Cache credentials
+        - name: DRAGONFLY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-cache-conn
+              key: DRAGONFLY_PASSWORD
+        # In-cluster service DNS names for tests
+        - name: TEST_POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: TEST_POSTGRES_PORT
+          value: "5432"
+        - name: TEST_REDIS_HOST
+          value: "deepagents-runtime-cache"
+        - name: TEST_REDIS_PORT
+          value: "6379"
+        - name: TEST_NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Standard app environment variables for in-cluster
+        - name: POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_SCHEMA
+          value: "public"
+        - name: DRAGONFLY_HOST
+          value: "deepagents-runtime-cache"
+        - name: DRAGONFLY_PORT
+          value: "6379"
+        - name: NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Test configuration
+        - name: USE_MOCK_LLM
+          value: "true"
+        - name: MOCK_TIMEOUT
+          value: "60"
+        # OpenAI API key (for mock mode, can be dummy)
+        - name: OPENAI_API_KEY
+          value: "mock-key-for-testing"
+        command: 
+        - "/bin/bash"
+        - "-c"
+        - |
+          echo "Starting in-cluster integration tests..."
+          echo "Test Path: {{TEST_PATH}}"
+          echo "Python version: $(python --version)"
+          echo "Checking installed packages..."
+          pip list | grep -E "(pytest|deepagents)"
+          echo "Running tests..."
+          python -m pytest "{{TEST_PATH}}" \
+            -v \
+            --tb=short \
+            --timeout=300 \
+            --junit-xml=artifacts/test-results.xml \
+            --cov=. \
+            --cov-report=xml:artifacts/coverage.xml \
+            --cov-report=html:artifacts/htmlcov
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: artifacts
+          mountPath: /app/artifacts
+      volumes:
+      - name: artifacts
+        emptyDir: {}
+      restartPolicy: Never
+      serviceAccountName: default
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600  # Keep job for 1 hour after completion for debugging

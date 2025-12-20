@@ -1,0 +1,43 @@
+name: Spec Generation Tests (In-Cluster)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - '.github/workflows/spec-gen-in-cluster.yml'
+      - 'tests/integration/test_agent_generation_workflow.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - '.github/workflows/spec-gen-in-cluster.yml'
+      - 'tests/integration/test_agent_generation_workflow.py'
+  workflow_dispatch:
+    inputs:
+      use_real_llm:
+        description: 'Use real LLM APIs (requires secrets)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  spec-generation-tests:
+    uses: ./.github/workflows/in-cluster-test.yml
+    with:
+      test-path: "tests/integration/test_agent_generation_workflow.py::test_agent_generation_end_to_end_success"
+      test-name: "spec-generation"
+      timeout: 900  # 15 minutes for LLM-based tests
+      use-real-llm: ${{ inputs.use_real_llm || false }}
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}

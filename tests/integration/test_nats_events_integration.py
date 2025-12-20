@@ -381,26 +381,31 @@ class TestNATSEventsIntegration:
             assert nc is not None, "NATS server is not available - please start NATS infrastructure"
             assert js is not None, "NATS JetStream is not available - please start NATS infrastructure"
             
-            # Create result stream
-            result_stream = "TEST_RESULT_STREAM"
+            # Use the existing AGENT_STATUS stream (created by platform)
+            result_stream = "AGENT_STATUS"
             
+            # Check if the stream exists
             try:
-                await js.add_stream(
-                    name=result_stream,
-                    subjects=["agent.status.*"],
-                    retention="limits",
-                    max_msgs=100,
-                    max_age=3600
-                )
-            except Exception:
-                pass
+                stream_info = await js.stream_info(result_stream)
+                print(f"   ✅ Using existing platform stream: {result_stream}")
+                print(f"   Stream subjects: {stream_info.config.subjects}")
+            except Exception as e:
+                print(f"   ❌ Platform stream not found: {result_stream}, error: {e}")
+                # Skip this test if the platform stream doesn't exist
+                pytest.skip(f"Platform AGENT_STATUS stream not available: {e}")
             
-            # Create consumer for results
-            result_consumer = await js.pull_subscribe(
-                subject="agent.status.*",
-                durable=f"result-consumer-{uuid.uuid4().hex[:8]}",
-                stream=result_stream
-            )
+            # Create consumer for results using the platform stream
+            consumer_name = f"test-result-consumer-{uuid.uuid4().hex[:8]}"
+            try:
+                result_consumer = await js.pull_subscribe(
+                    subject="agent.status.*",
+                    durable=consumer_name,
+                    stream=result_stream
+                )
+                print(f"   ✅ Created consumer: {consumer_name}")
+            except Exception as e:
+                print(f"   ❌ Failed to create consumer: {e}")
+                raise
             
             # Test successful result publishing using app's consumer
             await app_nats_consumer.publish_result(
@@ -444,9 +449,12 @@ class TestNATSEventsIntegration:
             
             # Cleanup
             try:
-                await js.delete_stream(result_stream)
-            except Exception:
-                pass
+                await js.delete_consumer(result_stream, consumer_name)
+                print(f"   🧹 Deleted consumer: {consumer_name}")
+            except Exception as e:
+                print(f"   ⚠️ Failed to delete consumer: {e}")
+            
+            # Note: Don't delete the AGENT_STATUS stream as it's managed by the platform
 
     async def test_consumer_health_check(self):
         """Test NATSConsumer health check functionality using app's consumer."""

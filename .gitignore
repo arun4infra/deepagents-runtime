@@ -15,5 +15,5 @@ tests/utils/outputs
 # Mock data from private repo (submodule content)
 tests/mock/*
 !tests/mock/.gitkeep
-scripts/local/logs/
+scripts/local/ci/logs
 artifacts

@@ -1,0 +1,109 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nats-integration-tests
+  namespace: intelligence-deepagents
+  labels:
+    app: deepagents-runtime-tests
+    test-type: integration
+spec:
+  template:
+    metadata:
+      labels:
+        app: deepagents-runtime-tests
+        test-type: integration
+    spec:
+      containers:
+      - name: test-runner
+        image: deepagents-runtime:ci-test
+        workingDir: /app
+        env:
+        # Database credentials from existing K8s secret
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_DB
+        # Cache credentials
+        - name: DRAGONFLY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-cache-conn
+              key: DRAGONFLY_PASSWORD
+        # In-cluster service DNS names for tests
+        - name: TEST_POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: TEST_POSTGRES_PORT
+          value: "5432"
+        - name: TEST_REDIS_HOST
+          value: "deepagents-runtime-cache"
+        - name: TEST_REDIS_PORT
+          value: "6379"
+        - name: TEST_NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Standard app environment variables for in-cluster
+        - name: POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_SCHEMA
+          value: "public"
+        - name: DRAGONFLY_HOST
+          value: "deepagents-runtime-cache"
+        - name: DRAGONFLY_PORT
+          value: "6379"
+        - name: NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Test configuration
+        - name: USE_MOCK_LLM
+          value: "true"
+        - name: MOCK_TIMEOUT
+          value: "60"
+        # OpenAI API key (for mock mode, can be dummy)
+        - name: OPENAI_API_KEY
+          value: "mock-key-for-testing"
+        command: 
+        - "/bin/bash"
+        - "-c"
+        - |
+          echo "Starting in-cluster integration tests..."
+          echo "Python version: $(python --version)"
+          echo "Checking installed packages..."
+          pip list | grep -E "(pytest|deepagents)"
+          echo "Running tests..."
+          python -m pytest tests/integration/test_nats_events_integration.py \
+            -v \
+            --tb=short \
+            --timeout=300 \
+            --junit-xml=artifacts/test-results.xml \
+            --cov=. \
+            --cov-report=xml:artifacts/coverage.xml \
+            --cov-report=html:artifacts/htmlcov
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: artifacts
+          mountPath: /app/artifacts
+      volumes:
+      - name: artifacts
+        emptyDir: {}
+      restartPolicy: Never
+      # Use the same service account as your app for proper RBAC
+      serviceAccountName: default
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600  # Keep job for 1 hour after completion for debugging
