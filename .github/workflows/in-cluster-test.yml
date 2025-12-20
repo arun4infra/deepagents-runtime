@@ -72,6 +72,13 @@ jobs:
           submodules: recursive
           token: ${{ secrets.BOT_GITHUB_TOKEN || github.token }}
       
+      - name: Checkout zerotouch-platform
+        uses: actions/checkout@v4
+        with:
+          repository: 'bizmatters/zerotouch-platform'
+          path: 'zerotouch-platform'
+          token: ${{ secrets.BOT_GITHUB_TOKEN || github.token }}
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
@@ -91,7 +98,7 @@ jobs:
       - name: Bootstrap platform
         run: |
           # Bootstrap the platform using the existing zerotouch-platform
-          cd ../zerotouch-platform
+          cd zerotouch-platform
           chmod +x scripts/bootstrap/01-master-bootstrap.sh
           ./scripts/bootstrap/01-master-bootstrap.sh --mode preview
       

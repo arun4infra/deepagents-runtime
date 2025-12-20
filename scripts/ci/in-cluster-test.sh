@@ -51,10 +51,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Create test job from template
 create_test_job() {
     local job_file="/tmp/${JOB_NAME}.yaml"
+    local template_file="$SCRIPT_DIR/test-job-template.yaml"
     
     log_info "Creating test job: $JOB_NAME"
     
-    cat > "$job_file" << EOF
+    # Use the template file and substitute variables
+    if [[ -f "$template_file" ]]; then
+        log_info "Using template file: $template_file"
+        sed -e "s/{{JOB_NAME}}/$JOB_NAME/g" \
+            -e "s/{{NAMESPACE}}/$NAMESPACE/g" \
+            -e "s/{{IMAGE}}/$IMAGE/g" \
+            -e "s|{{TEST_PATH}}|$TEST_PATH|g" \
+            -e "s/{{TEST_NAME}}/$TEST_NAME/g" \
+            "$template_file" > "$job_file"
+    else
+        log_warn "Template file not found, using inline YAML generation"
+        # Fallback to inline generation (existing code)
+        cat > "$job_file" << EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -211,6 +224,7 @@ spec:
   backoffLimit: 1
   ttlSecondsAfterFinished: 3600
 EOF
+    fi
 
     echo "$job_file"
 }
