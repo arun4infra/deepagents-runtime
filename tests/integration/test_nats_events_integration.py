@@ -383,8 +383,9 @@ class TestNATSEventsIntegration:
             
             # Use the existing AGENT_STATUS stream (created by platform)
             result_stream = "AGENT_STATUS"
+            result_subject = "agent.status.*"
             
-            # Check if the stream exists
+            # Verify the stream exists
             try:
                 stream_info = await js.stream_info(result_stream)
                 print(f"   ✅ Using existing platform stream: {result_stream}")
@@ -398,7 +399,7 @@ class TestNATSEventsIntegration:
             consumer_name = f"test-result-consumer-{uuid.uuid4().hex[:8]}"
             try:
                 result_consumer = await js.pull_subscribe(
-                    subject="agent.status.*",
+                    subject=result_subject,
                     durable=consumer_name,
                     stream=result_stream
                 )
