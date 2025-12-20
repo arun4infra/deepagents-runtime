@@ -54,6 +54,8 @@ on:
         required: false
       BOT_GITHUB_TOKEN:
         required: false
+      BOT_GITHUB_USERNAME:
+        required: false
       AWS_ROLE_ARN:
         required: false
 
@@ -146,6 +148,11 @@ jobs:
           kind load docker-image deepagents-runtime:${{ inputs.image-tag }} --name zerotouch-preview
       
       - name: Bootstrap platform
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
         run: |
           # Bootstrap the platform using the existing zerotouch-platform
           cd zerotouch-platform

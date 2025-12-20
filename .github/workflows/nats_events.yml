@@ -38,4 +38,5 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
