@@ -1,0 +1,253 @@
+# ==============================================================================
+# Centralized In-Cluster Test Job Template
+# ==============================================================================
+# This template is used by the in-cluster-test.sh script to create test jobs
+# Variables are substituted at runtime:
+# - {{JOB_NAME}}: Unique job name
+# - {{NAMESPACE}}: Target namespace
+# - {{IMAGE}}: Docker image to use
+# - {{TEST_PATH}}: Path to test files
+# - {{TEST_NAME}}: Test suite name
+# - {{USE_MOCK_LLM}}: Whether to use mock LLM (true/false)
+# - {{USE_REAL_LLM}}: Whether to use real LLM (true/false)
+# - {{MOCK_TIMEOUT}}: Timeout for mock operations
+# - {{OPENAI_API_KEY}}: OpenAI API key (real or mock)
+# - {{ANTHROPIC_API_KEY}}: Anthropic API key (real or mock)
+# ==============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{JOB_NAME}}"
+  namespace: "{{NAMESPACE}}"
+  labels:
+    app: deepagents-runtime-tests
+    test-type: integration
+    test-suite: "{{TEST_NAME}}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: deepagents-runtime-tests
+        test-type: integration
+        test-suite: "{{TEST_NAME}}"
+    spec:
+      containers:
+      - name: test-runner
+        image: "{{IMAGE}}"
+        workingDir: /app
+        env:
+        # Database credentials from K8s secrets
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_DB
+        # Cache credentials
+        - name: DRAGONFLY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-cache-conn
+              key: DRAGONFLY_PASSWORD
+        # In-cluster service DNS names for tests
+        - name: TEST_POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: TEST_POSTGRES_PORT
+          value: "5432"
+        - name: TEST_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_USER
+        - name: TEST_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_PASSWORD
+        - name: TEST_POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-db-conn
+              key: POSTGRES_DB
+        - name: TEST_REDIS_HOST
+          value: "deepagents-runtime-cache"
+        - name: TEST_REDIS_PORT
+          value: "6379"
+        - name: TEST_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: deepagents-runtime-cache-conn
+              key: DRAGONFLY_PASSWORD
+        - name: TEST_NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Standard app environment variables for in-cluster
+        - name: POSTGRES_HOST
+          value: "deepagents-runtime-db-rw"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_SCHEMA
+          value: "public"
+        - name: DRAGONFLY_HOST
+          value: "deepagents-runtime-cache"
+        - name: DRAGONFLY_PORT
+          value: "6379"
+        - name: NATS_URL
+          value: "nats://nats.nats.svc:4222"
+        # Test configuration
+        - name: USE_MOCK_LLM
+          value: "{{USE_MOCK_LLM}}"
+        - name: USE_REAL_LLM
+          value: "{{USE_REAL_LLM}}"
+        - name: MOCK_TIMEOUT
+          value: "{{MOCK_TIMEOUT}}"
+        # OpenAI API key (can be real or mock depending on test mode)
+        - name: OPENAI_API_KEY
+          value: "{{OPENAI_API_KEY}}"
+        - name: ANTHROPIC_API_KEY
+          value: "{{ANTHROPIC_API_KEY}}"
+        command: 
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -e  # Exit on any error
+          set -o pipefail  # Exit on pipe failures
+          
+          echo "=============================================="
+          echo "🚀 Starting in-cluster integration tests"
+          echo "=============================================="
+          echo "Test Path: {{TEST_PATH}}"
+          echo "Test Name: {{TEST_NAME}}"
+          echo "Use Mock LLM: {{USE_MOCK_LLM}}"
+          echo "Timestamp: $(date)"
+          echo ""
+          
+          echo "=== ENVIRONMENT CHECK ==="
+          echo "Python version: $(python --version)"
+          echo "Working directory: $(pwd)"
+          echo "Available disk space:"
+          df -h /app || echo "Could not check disk space"
+          echo ""
+          
+          echo "=== DEPENDENCY CHECK ==="
+          echo "Checking installed packages..."
+          if pip list | grep -E "(pytest|deepagents)"; then
+            echo "✅ Core packages found"
+          else
+            echo "❌ Core packages not found!"
+            echo "All installed packages:"
+            pip list | head -20
+            exit 1
+          fi
+          echo ""
+          
+          echo "=== TEST PATH VALIDATION ==="
+          if [ -f "{{TEST_PATH}}" ] || [ -d "{{TEST_PATH}}" ]; then
+            echo "✅ Test path exists: {{TEST_PATH}}"
+            if [ -d "{{TEST_PATH}}" ]; then
+              echo "Test files in directory:"
+              find "{{TEST_PATH}}" -name "*.py" | head -10
+            fi
+          else
+            echo "❌ Test path does not exist: {{TEST_PATH}}"
+            echo "Available files/directories:"
+            ls -la . | head -10
+            echo "Looking for test files:"
+            find . -name "*test*.py" | head -10
+            exit 1
+          fi
+          echo ""
+          
+          echo "=== ARTIFACTS DIRECTORY ==="
+          mkdir -p artifacts
+          if [ -d "artifacts" ] && [ -w "artifacts" ]; then
+            echo "✅ Artifacts directory ready: $(pwd)/artifacts"
+          else
+            echo "❌ Cannot create or write to artifacts directory"
+            ls -la . | grep artifacts || echo "No artifacts directory found"
+            exit 1
+          fi
+          echo ""
+          
+          echo "=============================================="
+          echo "🧪 Running pytest..."
+          echo "=============================================="
+          
+          # Run pytest with comprehensive logging
+          python -m pytest "{{TEST_PATH}}" \
+            -v \
+            --tb=short \
+            --timeout=600 \
+            --junit-xml=artifacts/test-results.xml \
+            --cov=. \
+            --cov-report=xml:artifacts/coverage.xml \
+            --cov-report=html:artifacts/htmlcov \
+            --capture=no \
+            --log-cli-level=INFO
+          
+          PYTEST_EXIT_CODE=$?
+          
+          echo ""
+          echo "=============================================="
+          echo "📊 Test Execution Complete"
+          echo "=============================================="
+          echo "Pytest exit code: $PYTEST_EXIT_CODE"
+          echo ""
+          
+          echo "=== ARTIFACTS GENERATED ==="
+          if [ -d "artifacts" ]; then
+            echo "Artifacts directory contents:"
+            ls -la artifacts/ || echo "No artifacts generated"
+            
+            if [ -f "artifacts/test-results.xml" ]; then
+              echo ""
+              echo "✅ Test results XML generated"
+              echo "File size: $(stat -c%s artifacts/test-results.xml 2>/dev/null || echo 'unknown') bytes"
+              echo "First few lines:"
+              head -5 artifacts/test-results.xml || echo "Could not read test results"
+            else
+              echo "❌ No test-results.xml generated"
+            fi
+          else
+            echo "❌ No artifacts directory found"
+          fi
+          echo ""
+          
+          # Exit with pytest's exit code
+          if [ $PYTEST_EXIT_CODE -eq 0 ]; then
+            echo "✅ All tests completed successfully!"
+          else
+            echo "❌ Tests failed with exit code: $PYTEST_EXIT_CODE"
+          fi
+          
+          echo "=============================================="
+          echo "🏁 Test execution finished"
+          echo "=============================================="
+          
+          exit $PYTEST_EXIT_CODE
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        volumeMounts:
+        - name: artifacts
+          mountPath: /app/artifacts
+      volumes:
+      - name: artifacts
+        emptyDir: {}
+      restartPolicy: Never
+      serviceAccountName: default
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600  # Keep job for 1 hour after completion for debugging

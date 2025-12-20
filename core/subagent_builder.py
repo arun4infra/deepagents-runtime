@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 from langchain_core.tools import BaseTool
 from langchain_core.runnables import Runnable
 
-from agent_executor.core.model_identifier import create_model_identifier
+from core.model_identifier import create_model_identifier
 
 # Import deep agents pattern components
 # Note: The spec requires deepagents package with create_deep_agent and CompiledSubAgent
@@ -28,7 +28,7 @@ try:
     from deepagents.middleware.filesystem import FilesystemMiddleware
     from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
     from langchain.agents import create_agent
-    from agent_executor.core.state_schema_builder import create_state_schema_from_config
+    from core.state_schema_builder import create_state_schema_from_config
     DEEPAGENTS_AVAILABLE = True
 except ImportError:
     # Fallback to LangGraph's create_react_agent if deepagents not available

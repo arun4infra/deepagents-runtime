@@ -19,31 +19,61 @@ services:
       # Note: Tests also run migrations via postgres_connection fixture for validation
       # - ../../migrations:/docker-entrypoint-initdb.d
 
-  dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
-    container_name: agent-executor-test-dragonfly
+  redis:
+    image: redis:7-alpine
+    container_name: agent-executor-test-redis
     ports:
-      - "16380:6379"  # Use 16380 to avoid conflicts, Dragonfly is Redis-compatible
+      - "16380:6379"  # Use 16380 to avoid conflicts
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]  # Dragonfly is Redis-compatible
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - dragonfly_test_data:/data
+      - redis_test_data:/data
 
   nats:
     image: nats:latest
     container_name: agent-executor-test-nats
-    command: ["-js"]  # Enable JetStream
+    command: ["-js", "-m", "8222"]  # Enable JetStream and monitoring
     ports:
       - "14222:4222"  # NATS client port
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "18222:8222"  # NATS monitoring port
+
+  nats-setup:
+    image: natsio/nats-box:latest
+    container_name: agent-executor-nats-setup
+    depends_on:
+      - nats
+    command: 
+      - sh
+      - -c
+      - |
+        echo 'Waiting for NATS to be ready...'
+        sleep 2
+        
+        echo 'Setting up NATS streams...'
+        nats --server=nats://nats:4222 stream add AGENT_EXECUTION \
+          --subjects="agent.execute.*" \
+          --retention=limits \
+          --max-age=1h \
+          --storage=memory \
+          --replicas=1 \
+          --defaults || echo 'AGENT_EXECUTION stream creation failed'
+        
+        nats --server=nats://nats:4222 stream add AGENT_STATUS \
+          --subjects="agent.status.*" \
+          --retention=limits \
+          --max-age=1h \
+          --storage=memory \
+          --replicas=1 \
+          --defaults || echo 'AGENT_STATUS stream creation failed'
+        
+        echo 'Verifying streams...'
+        nats --server=nats://nats:4222 stream list
+        echo 'NATS streams setup completed'
+    restart: "no"
 
 volumes:
   postgres_test_data:
-  dragonfly_test_data:
+  redis_test_data:

@@ -32,13 +32,13 @@ from nats.js.api import ConsumerConfig
 import structlog
 from pydantic import ValidationError
 
-from agent_executor.core.builder import GraphBuilder
-from agent_executor.core.executor import ExecutionManager
-from agent_executor.models.events import JobExecutionEvent
-from agent_executor.services.cloudevents import CloudEventEmitter
-from agent_executor.observability.metrics import (
-    agent_executor_nats_messages_processed_total,
-    agent_executor_nats_messages_failed_total
+from core.builder import GraphBuilder
+from core.executor import ExecutionManager
+from models.events import JobExecutionEvent
+from services.cloudevents import CloudEventEmitter
+from observability.metrics import (
+    deepagents_runtime_nats_messages_processed_total,
+    deepagents_runtime_nats_messages_failed_total
 )
 
 logger = structlog.get_logger(__name__)
@@ -134,8 +134,8 @@ class NATSConsumer:
         try:
             logger.info("connecting_to_nats", nats_url=self.nats_url)
             
-            # Connect to NATS
-            self.nc = await nats.connect(self.nats_url)
+            # Connect to NATS with timeout to prevent hanging
+            self.nc = await nats.connect(self.nats_url, connect_timeout=10)
             self.js = self.nc.jetstream()
             
             logger.info("nats_connected", nats_url=self.nats_url)
@@ -337,7 +337,7 @@ class NATSConsumer:
             )
 
             # Record success metric
-            agent_executor_nats_messages_processed_total.inc()
+            deepagents_runtime_nats_messages_processed_total.inc()
 
         except Exception as e:
             # Execution failure: Publish failed CloudEvent
@@ -372,7 +372,7 @@ class NATSConsumer:
             )
 
             # Record failure metric
-            agent_executor_nats_messages_failed_total.inc()
+            deepagents_runtime_nats_messages_failed_total.inc()
 
     async def publish_result(
         self,
@@ -468,6 +468,27 @@ class NATSConsumer:
 
         # trace_flags: "01" means sampled
         return f"00-{normalized_trace_id}-{parent_id}-01"
+
+    async def wait_for_connection(self, timeout: float = 10.0) -> bool:
+        """
+        Wait for NATS connection to be established.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if connection is established, False if timeout
+
+        References:
+            - Requirements: Req. 17.3
+            - Tasks: Task 1.6
+        """
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            if self.nc is not None and not self.nc.is_closed:
+                return True
+            await asyncio.sleep(0.1)
+        return False
 
     def health_check(self) -> bool:
         """

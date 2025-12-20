@@ -35,7 +35,7 @@ from nats.js import JetStreamContext
 import structlog
 from cloudevents.http import CloudEvent
 
-from agent_executor.models.events import JobCompletedEvent, JobFailedEvent
+from models.events import JobCompletedEvent, JobFailedEvent
 
 logger = structlog.get_logger(__name__)
 
@@ -72,13 +72,13 @@ class CloudEventEmitter:
             - Requirements: Req. 8.3, 8.4, 13.4
             - Tasks: Task 1.4
         """
-        self.nats_url = os.getenv("NATS_URL", "nats://nats.nats.svc:4222")
+        # Don't read NATS_URL here - read it lazily in _ensure_connected
+        # This allows tests to override the env var before connection
         self.nc: Optional[nats.NATS] = None
         self.js: Optional[JetStreamContext] = None
 
         logger.info(
             "cloudevent_emitter_initialized",
-            nats_url=self.nats_url,
             message="CloudEventEmitter ready to emit events to NATS",
         )
 
@@ -87,14 +87,18 @@ class CloudEventEmitter:
         Ensure NATS connection is established.
 
         This method lazily initializes the NATS connection and JetStream context
-        if they haven't been created yet.
+        if they haven't been created yet. Reads NATS_URL from environment at connection
+        time to allow tests to override it.
 
         Raises:
             Exception: If NATS connection fails
         """
         if self.nc is None or self.nc.is_closed:
-            logger.info("connecting_to_nats_for_cloudevents", nats_url=self.nats_url)
-            self.nc = await nats.connect(self.nats_url)
+            # Read NATS_URL lazily to allow test overrides
+            nats_url = os.getenv("NATS_URL", "nats://nats.nats.svc:4222")
+            logger.info("connecting_to_nats_for_cloudevents", nats_url=nats_url)
+            # Add connection timeout to prevent hanging
+            self.nc = await nats.connect(nats_url, connect_timeout=10)
             self.js = self.nc.jetstream()
             logger.info("nats_connected_for_cloudevents")
 

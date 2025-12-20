@@ -1,87 +1,195 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # ==============================================================================
-# Tier 3 CI Script: Build Production Docker Image
+# Tier 2 CI Script: Build Docker Image
 # ==============================================================================
-# Purpose: Atomic primitive for building the agent-executor production image
-# Owner: Backend Developer
-# Called by: Tier 2 orchestration scripts (platform/scripts/ci/*)
+# Purpose: Build Docker image for testing (Kind) or production (Registry push)
+# Usage: ./scripts/ci/build.sh [--mode=test|production|local]
+# Called by: GitHub Actions workflows or local development
 #
-# Environment Variables (CI-provided):
-#   - PR_NUMBER: Pull request number (optional)
-#   - IMAGE_TAG: Image tag override (optional)
-#   - DOCKER_REGISTRY: Docker registry URL (optional)
-#
-# Output: Echoes fully-qualified image name for Tier 2 consumption
+# Modes:
+#   test       - Build and load into Kind cluster (default)
+#   production - Build multi-arch and push to registry (requires GITHUB_SHA, GITHUB_REF_NAME)
+#   local      - Build multi-arch and push to registry using local git info
 # ==============================================================================
 
 # Configuration
-SERVICE_NAME="agent-executor"
-GIT_SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+SERVICE_NAME="deepagents-runtime"
+REGISTRY="ghcr.io/arun4infra"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PLATFORM="linux/amd64"  # Target platform for production builds
 
-# DOCKER_REGISTRY must be provided by the Tier 2 orchestrator
-# This script does not auto-detect or assume defaults
-if [ -z "${DOCKER_REGISTRY}" ]; then
-    echo "ERROR: DOCKER_REGISTRY environment variable is required"
-    echo "This script must be called by a Tier 2 orchestrator that sets DOCKER_REGISTRY"
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+
+# Parse arguments
+MODE="test"  # Default mode
+for arg in "$@"; do
+    case $arg in
+        --mode=*)
+            MODE="${arg#*=}"
+            shift
+            ;;
+        *)
+            # Unknown option
+            ;;
+    esac
+done
+
+# Validate mode
+if [[ "$MODE" != "test" && "$MODE" != "production" && "$MODE" != "local" ]]; then
+    log_error "Invalid mode: $MODE. Use 'test', 'production', or 'local'"
     exit 1
 fi
 
-# Note: Docker authentication is handled by the Tier 1/2 orchestrator (GitHub Actions)
-# This script assumes docker is already authenticated to the target registry
-echo "→ Using registry: ${DOCKER_REGISTRY}"
-
-# Determine image tag
-if [ -n "${PR_NUMBER}" ]; then
-    IMAGE_TAG="${IMAGE_TAG:-pr-${PR_NUMBER}-${GIT_SHORT_SHA}}"
-else
-    IMAGE_TAG="${IMAGE_TAG:-local-${GIT_SHORT_SHA}}"
-fi
-
-FULL_IMAGE_NAME="${DOCKER_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG}"
-
 echo "================================================================================"
-echo "Building ${SERVICE_NAME} Docker Image"
+echo "Building Docker Image"
 echo "================================================================================"
-echo "  Registry:  ${DOCKER_REGISTRY}"
 echo "  Service:   ${SERVICE_NAME}"
-echo "  Tag:       ${IMAGE_TAG}"
-echo "  Full Name: ${FULL_IMAGE_NAME}"
+echo "  Mode:      ${MODE}"
+echo "  Registry:  ${REGISTRY}"
 echo "================================================================================"
 
-# Build the image from monorepo root
-# Context is monorepo root because Dockerfile copies from services/agent_executor/
-# CI mode: Always use --no-cache and --pull for reproducible builds
-docker build \
-    -f ./services/agent_executor/Dockerfile \
-    -t "${FULL_IMAGE_NAME}" \
-    --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-    --build-arg GIT_COMMIT="${GIT_SHORT_SHA}" \
-    --no-cache \
-    --pull \
-    .
+cd "${REPO_ROOT}"
 
-echo ""
-echo "✅ Build complete: ${FULL_IMAGE_NAME}"
-echo ""
+if [[ "$MODE" == "test" ]]; then
+    # ========================================================================
+    # TEST MODE: Build and load into Kind cluster
+    # ========================================================================
+    IMAGE_TAG="ci-test"
+    CLUSTER_NAME="zerotouch-preview"
+    
+    log_info "Building Docker image for testing..."
+    docker build \
+        -f Dockerfile \
+        -t "${SERVICE_NAME}:${IMAGE_TAG}" \
+        --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+        --build-arg GIT_COMMIT="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')}" \
+        .
+    
+    log_success "Docker image built successfully"
+    
+    log_info "Loading image into Kind cluster..."
+    if ! kind load docker-image "${SERVICE_NAME}:${IMAGE_TAG}" --name "${CLUSTER_NAME}"; then
+        log_error "Failed to load image into Kind cluster"
+        exit 1
+    fi
+    
+    log_success "Image loaded successfully into Kind cluster"
+    log_success "Build and load complete: ${SERVICE_NAME}:${IMAGE_TAG}"
 
-# Push to registry (CI workflow standard)
-echo "→ Pushing image to registry: ${DOCKER_REGISTRY}"
-docker push "${FULL_IMAGE_NAME}"
-echo "✅ Push complete: ${FULL_IMAGE_NAME}"
-
-# Also push as latest if PUSH_LATEST is set
-if [ "${PUSH_LATEST}" = "true" ]; then
-    LATEST_IMAGE="${DOCKER_REGISTRY}/${SERVICE_NAME}:latest"
-    echo ""
-    echo "→ Tagging and pushing as latest..."
-    docker tag "${FULL_IMAGE_NAME}" "${LATEST_IMAGE}"
-    docker push "${LATEST_IMAGE}"
-    echo "✅ Push complete: ${LATEST_IMAGE}"
+elif [[ "$MODE" == "production" || "$MODE" == "local" ]]; then
+    # ========================================================================
+    # PRODUCTION/LOCAL MODE: Build multi-arch and push to registry
+    # ========================================================================
+    
+    if [[ "$MODE" == "production" ]]; then
+        # Validate required environment variables for CI
+        REQUIRED_VARS=("GITHUB_SHA" "GITHUB_REF_NAME")
+        MISSING_VARS=()
+        
+        for var in "${REQUIRED_VARS[@]}"; do
+            if [ -z "${!var:-}" ]; then
+                MISSING_VARS+=("$var")
+            fi
+        done
+        
+        if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+            log_error "Missing required environment variables for production mode:"
+            printf '  - %s\n' "${MISSING_VARS[@]}"
+            exit 1
+        fi
+        
+        GIT_SHA="${GITHUB_SHA}"
+        GIT_REF="${GITHUB_REF_NAME}"
+    else
+        # Local mode: use git commands to get info
+        log_info "Running in local mode - using git to determine version info"
+        GIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+        GIT_REF=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    fi
+    
+    # Determine image tags based on git ref
+    TAGS=()
+    SHORT_SHA=$(echo "${GIT_SHA}" | cut -c1-7)
+    
+    if [[ "${GIT_REF}" == "main" ]]; then
+        # Main branch: tag with branch-sha and latest
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:main-${SHORT_SHA}")
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:latest")
+    elif [[ "${GIT_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+        # Version tag: use semantic versioning
+        VERSION="${GIT_REF#v}"  # Remove 'v' prefix
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION}")
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION%.*}")  # Major.minor
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:${VERSION%%.*}") # Major only
+    else
+        # Feature branch or PR: tag with branch-sha
+        SAFE_BRANCH=$(echo "${GIT_REF}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        TAGS+=("${REGISTRY}/${SERVICE_NAME}:${SAFE_BRANCH}-${SHORT_SHA}")
+        # Also tag as latest for feature branches in local mode
+        if [[ "$MODE" == "local" ]]; then
+            TAGS+=("${REGISTRY}/${SERVICE_NAME}:latest")
+        fi
+    fi
+    
+    # Build Docker image with all tags using buildx for multi-arch
+    log_info "Building Docker image for ${PLATFORM}..."
+    TAG_ARGS=""
+    for tag in "${TAGS[@]}"; do
+        TAG_ARGS="${TAG_ARGS} -t ${tag}"
+    done
+    
+    # Use buildx for cross-platform builds
+    docker buildx build \
+        --platform "${PLATFORM}" \
+        -f Dockerfile \
+        ${TAG_ARGS} \
+        --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+        --build-arg GIT_COMMIT="${GIT_SHA}" \
+        --push \
+        .
+    
+    log_success "Docker image built and pushed successfully"
+    log_info "Pushed tags:"
+    for tag in "${TAGS[@]}"; do
+        echo "  - ${tag}"
+    done
+    
+    # Update deployment manifest if on main branch (production mode only)
+    if [[ "$MODE" == "production" && "${GIT_REF}" == "main" ]]; then
+        log_info "Updating deployment manifest for main branch..."
+        
+        DEPLOYMENT_FILE="platform/claims/intelligence-deepagents/deepagents-runtime-deployment.yaml"
+        NEW_IMAGE="${REGISTRY}/${SERVICE_NAME}:main-${SHORT_SHA}"
+        
+        if [ -f "$DEPLOYMENT_FILE" ]; then
+            # Update image tag in deployment file
+            sed -i "s|image: ${REGISTRY}/${SERVICE_NAME}:.*|image: ${NEW_IMAGE}|g" "$DEPLOYMENT_FILE"
+            
+            log_success "Updated deployment manifest with image: ${NEW_IMAGE}"
+            
+            # Output for GitHub Actions to commit the change
+            echo "DEPLOYMENT_UPDATED=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+            echo "NEW_IMAGE=${NEW_IMAGE}" >> "${GITHUB_OUTPUT:-/dev/null}"
+        else
+            log_error "Deployment file not found: $DEPLOYMENT_FILE"
+            exit 1
+        fi
+    fi
+    
+    # Output primary image tag for downstream use
+    PRIMARY_TAG="${TAGS[0]}"
+    echo "PRIMARY_IMAGE=${PRIMARY_TAG}" >> "${GITHUB_OUTPUT:-/dev/null}"
+    
+    log_success "Build and push completed successfully"
+    echo "Primary image: ${PRIMARY_TAG}"
 fi
-
-echo ""
-
-# Echo image name for Tier 2 script consumption
-echo "${FULL_IMAGE_NAME}"

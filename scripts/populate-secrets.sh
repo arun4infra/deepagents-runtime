@@ -390,7 +390,7 @@ main() {
         esac
     done
 
-    log_info "Starting secret population for agent_executor..."
+    log_info "Starting secret population for deepagents_runtime..."
     log_info "Vault Address: ${VAULT_ADDR}"
     log_info "Secrets Path: ${SECRETS_PATH}"
     echo ""

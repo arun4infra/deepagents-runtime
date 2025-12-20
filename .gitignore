@@ -7,6 +7,13 @@ htmlcov
 .env
 uv.lock
 .ruff_cache
-agent_executor.egg-info
-.kiro
+deepagents_runtime.egg-info
 codebase.md
+dev
+tests/integration/outputs
+tests/utils/outputs
+# Mock data from private repo (submodule content)
+tests/mock/*
+!tests/mock/.gitkeep
+scripts/local/ci/logs
+artifacts

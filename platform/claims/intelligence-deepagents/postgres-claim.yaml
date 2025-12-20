@@ -1,15 +1,15 @@
 apiVersion: database.bizmatters.io/v1alpha1
 kind: PostgresInstance
 metadata:
-  name: agent-executor-db
+  name: deepagents-runtime-db
   namespace: intelligence-deepagents
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  size: medium
+  size: medium  # small/micro for preview/dev, medium for production
   version: "16"
   storageGB: 20
 # Zero-Touch Pattern:
 # - CNPG auto-generates credentials
-# - Database/owner: agent-executor-db
-# - Connection secret auto-created: agent-executor-db-conn
+# - Database/owner: deepagents-runtime-db
+# - Connection secret auto-created: deepagents-runtime-db-conn

@@ -1,16 +1,15 @@
-# deepagnets-runtime - Tier 3 Scripts
+# deepagents-runtime - 2-Tier Scripts
 
-This directory contains Tier 3 scripts for the `deepagnets-runtime` service, following the Script Hierarchy Model standard defined in `.claude/skills/standards/script-hierarchy-model.md`.
+This directory contains scripts for the `deepagents-runtime` service using a simplified 2-tier architecture.
 
-## Script Hierarchy Overview
+## Script Architecture Overview
 
 | Tier | Location | Owner | Purpose |
 |------|----------|-------|---------|
 | **Tier 1** | `.github/workflows/` | DevOps | Pipeline definitions (GitHub Actions) |
-| **Tier 2** | `platform/scripts/` | DevOps | Task orchestration (calls Tier 3 primitives) |
-| **Tier 3** | `services/*/scripts/` | Backend Developer | Atomic service primitives |
+| **Tier 2** | `scripts/ci/` & `scripts/local/` | Backend Developer | Service operations |
 
-This directory contains **Tier 3 scripts** owned by the Backend Developer.
+This directory contains **Tier 2 scripts** owned by the Backend Developer.
 
 ---
 
@@ -18,17 +17,20 @@ This directory contains **Tier 3 scripts** owned by the Backend Developer.
 
 ```
 scripts/
-├── TIER3_SCRIPTS.md       # This file
+├── TIER3_SCRIPTS.md       # This file (renamed from old structure)
 ├── ci/                    # CI/Production scripts
-│   ├── build.sh           # Build production Docker image
+│   ├── build.sh           # Build and load Docker image into Kind
+│   ├── deploy.sh          # Deploy service to Kubernetes cluster
+│   ├── test.sh            # Run integration tests
 │   ├── run.sh             # Container entrypoint (production)
-│   └── run-tests.sh       # Run integration tests in CI
+│   └── run-migrations.sh  # Database migrations
 └── local/                 # Local development scripts
+    ├── build.sh           # Build Docker image locally
     ├── run.sh             # Start service with hot-reload
-    └── run-tests.sh       # Run all tests locally
+    └── test.sh            # Run all tests locally
 ```
 
-**Note**: Secret management is handled by External Secrets Operator (ESO) in production. No manual secret scripts needed.
+**Note**: This is a simplified 2-tier architecture where Tier 1 (GitHub Actions) directly calls Tier 2 scripts.
 
 ---
 
@@ -36,32 +38,77 @@ scripts/
 
 ### `ci/build.sh`
 
-**Purpose:** Atomic primitive for building the production Docker image.
+**Purpose:** Build Docker image for testing (Kind) or production (Registry push).
 
 **Usage:**
 ```bash
-# From monorepo root
-./services/agent_executor/scripts/ci/build.sh
+# Test mode (integration testing)
+./scripts/ci/build.sh --mode=test
+
+# Production mode (registry push)
+./scripts/ci/build.sh --mode=production
+```
+
+**Modes:**
+- **`test`**: Builds image and loads into Kind cluster for integration testing
+- **`production`**: Builds image and pushes to GitHub Container Registry
+
+**Environment Variables:**
+- `GITHUB_SHA` (required for production): Git commit SHA
+- `GITHUB_REF_NAME` (required for production): Git branch or tag name
+- `GITHUB_OUTPUT` (optional): GitHub Actions output file
+
+**Output (Test Mode):**
+- Builds Docker image: `deepagents-runtime:ci-test`
+- Loads image into Kind cluster: `zerotouch-preview`
+
+**Output (Production Mode):**
+- Builds multi-platform Docker image
+- Pushes to `ghcr.io/arun4infra/deepagents-runtime` with appropriate tags
+- Updates deployment manifest for main branch
+
+**Called by:** GitHub Actions workflows
+
+### `ci/deploy.sh`
+
+**Purpose:** Deploy deepagents-runtime service to Kubernetes cluster.
+
+**Usage:**
+```bash
+# Called by GitHub Actions workflow
+./scripts/ci/deploy.sh
 ```
 
 **Environment Variables:**
-- `PR_NUMBER` (optional): Pull request number for tagging
-- `IMAGE_TAG` (optional): Override image tag
-- `DOCKER_REGISTRY` (optional): Docker registry URL (default: `95.216.151.243:30500`)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (for ESO)
 
 **Output:**
-- Builds Docker image with tag: `${DOCKER_REGISTRY}/agent-executor:${IMAGE_TAG}`
-- Echoes fully-qualified image name for Tier 2 consumption
+- Creates namespace: `intelligence-deepagents`
+- Applies platform claims (ExternalSecrets, PostgreSQL, Dragonfly)
+- Deploys EventDrivenService with built image
+- Waits for pod to be ready
 
-**Called by:** Tier 2 orchestration scripts (e.g., `platform/scripts/ci/run-e2e-for-pr.sh`)
+**Called by:** GitHub Actions workflow
 
-**Example:**
+### `ci/test.sh`
+
+**Purpose:** Execute integration tests against deployed service.
+
+**Usage:**
 ```bash
-export PR_NUMBER=123
-export DOCKER_REGISTRY="registry.bizmatters.dev"
-./services/agent_executor/scripts/ci/build.sh
-# Output: registry.bizmatters.dev/agent-executor:pr-123-a1b2c3d
+# Called by GitHub Actions workflow
+./scripts/ci/test.sh
 ```
+
+**Environment Variables:**
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (required for LLM calls)
+
+**Output:**
+- Runs pytest integration tests
+- Generates test results and coverage reports
+- Collects debugging artifacts
+
+**Called by:** GitHub Actions workflow
 
 ---
 
@@ -208,15 +255,32 @@ cd services/agent_executor
 
 ---
 
-### `local/run-tests.sh`
+### `local/build.sh`
+
+**Purpose:** Build Docker image for local development with caching.
+
+**Usage:**
+```bash
+# From deepagents-runtime directory
+./scripts/local/build.sh
+```
+
+**Features:**
+- Uses Docker layer caching for speed
+- Tags as `local-{git-sha}` and `latest`
+- Does NOT push to any registry
+- Compatible with Docker Desktop Kubernetes
+
+**Called by:** Developer via terminal
+
+### `local/test.sh`
 
 **Purpose:** Run all tests locally (unit + integration).
 
 **Usage:**
 ```bash
-# From service directory
-cd services/agent_executor
-./scripts/local/run-tests.sh
+# From deepagents-runtime directory
+./scripts/local/test.sh
 ```
 
 **Test Stages:**
@@ -226,7 +290,7 @@ cd services/agent_executor
 **Features:**
 - Color-coded output (green = pass, red = fail, yellow = warning)
 - Code coverage report (HTML + terminal)
-- Optional: Start/stop test containers with Docker Compose
+- Automatic Docker Compose management for test infrastructure
 
 **Environment Variables:**
 - `TESTING=true`: Automatically set by script
@@ -234,27 +298,9 @@ cd services/agent_executor
 - All secrets loaded from `.env` file for local testing
 
 **Output:**
-- Coverage report: `services/agent_executor/htmlcov/index.html`
+- Coverage report: `htmlcov/index.html`
 
 **Called by:** Developer via terminal
-
-**Example:**
-```bash
-./scripts/local/run-tests.sh
-# Output:
-# ================================================================================
-# Stage 1: Unit Tests
-# ================================================================================
-# ✅ Unit tests passed
-# Coverage: 87%
-#
-# ================================================================================
-# Stage 2: Integration Tests
-# ================================================================================
-# ✅ Integration tests passed
-#
-# ✅ All tests passed successfully
-```
 
 ---
 

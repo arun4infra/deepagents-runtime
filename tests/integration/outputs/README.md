@@ -1,76 +1,41 @@
-# Test Artifacts Output Directory
+# Test Outputs
 
-This directory stores detailed test execution artifacts generated during integration tests.
+This directory contains test execution artifacts from integration tests.
 
-## Artifact Types
+## Structure
 
-Each test run generates a unique set of artifacts with timestamp-based naming:
+Each test run creates a subdirectory `run_YYYYMMDD_HHMMSS/` containing all related artifacts:
 
-### `test_<timestamp>_all_events.json`
-Complete capture of ALL streaming events from Redis pub/sub channel.
-- Contains every event published during graph execution
-- Includes LLM token streams, tool calls, state updates, and end events
-- Used for detailed analysis and debugging
-
-### `test_<timestamp>_cloudevent.json`
-Final CloudEvent emitted to K_SINK (Knative Broker).
-- Contains job completion status
-- Includes final agent definition
-- Shows W3C trace context propagation
-
-### `test_<timestamp>_checkpoints.json`
-PostgreSQL checkpoints written during execution.
-- Shows checkpoint timeline
-- Validates thread_id = job_id
-- Contains LangGraph state snapshots
-
-### `test_<timestamp>_specialist_timeline.json`
-Specialist agent execution timeline.
-- Start/end timestamps for each specialist
-- Duration in milliseconds and seconds
-- Execution order validation
-
-### `test_<timestamp>_summary.txt`
-Human-readable execution summary.
-- Event count breakdown with percentages
-- Specialist execution times
-- Checkpoint and CloudEvent summaries
-- Overall execution statistics
-
-## Usage
-
-Artifacts are automatically generated during test execution:
-
-```bash
-# Run integration tests
-pytest services/agent_executor/tests/integration/test_api.py -v -s
-
-# View artifacts
-ls -lh services/agent_executor/tests/integration/outputs/
-
-# Analyze specific test run
-cat services/agent_executor/tests/integration/outputs/test_20241119_143022_summary.txt
+```
+outputs/
+├── run_20251212_212748/          # Single test run directory
+│   ├── test_run.log              # Complete test execution log
+│   ├── all_events.json           # All streaming events captured
+│   ├── checkpoints.json          # PostgreSQL checkpoints
+│   ├── cloudevent.json           # Final CloudEvent emitted
+│   ├── specialist_timeline.json  # Specialist execution timeline
+│   └── summary.txt               # Human-readable execution summary
+└── run_20251212_193045/          # Another test run
+    └── ...
 ```
 
-## Retention
+## Benefits
 
-Artifacts are gitignored and not committed to version control. They are useful for:
-- Debugging test failures
-- Analyzing LLM behavior
-- Validating event structure
-- Performance analysis
+- **Easy to find**: All artifacts for a single test run are in one directory
+- **Easy to clean**: Delete entire run directory to remove all related files
+- **Easy to compare**: Compare directories to see differences between runs
+- **Easy to share**: Zip a single directory to share test results
 
-Clean up old artifacts periodically:
+## Cleanup
 
+These directories are generated during test runs and can be safely deleted.
+They are useful for debugging test failures and analyzing agent behavior.
+
+To clean up old test runs:
 ```bash
-# Remove artifacts older than 7 days
-find services/agent_executor/tests/integration/outputs/ -name "test_*.json" -mtime +7 -delete
-find services/agent_executor/tests/integration/outputs/ -name "test_*.txt" -mtime +7 -delete
+# Remove all test runs
+rm -rf run_*
+
+# Remove test runs older than 7 days
+find . -name "run_*" -type d -mtime +7 -exec rm -rf {} +
 ```
-
-## References
-
-- Event structure: `agent-executor-event-example.md`
-- Minimum guarantees: `agent-executor-minimum-events.md`
-- Test implementation: `test_api.py`
-- Helper functions: `test_helpers.py`

@@ -10,13 +10,13 @@ Flat Structure:
     - tool_loader.py: Tool loading logic
 
 Usage:
-    from agent_executor.core import GraphBuilder
+    from core import GraphBuilder
 
     builder = GraphBuilder()
     agent = builder.build_from_definition(definition)
 
 Or use the modular functions directly:
-    from agent_executor.core import (
+    from core import (
         load_tools_from_definition,
         create_model_identifier,
         build_subagent
@@ -24,18 +24,18 @@ Or use the modular functions directly:
 """
 
 # Main API
-from agent_executor.core.builder import (
+from core.builder import (
     GraphBuilder,
     GraphBuilderError
 )
 
 # Modular functions
-from agent_executor.core.tool_loader import (
+from core.tool_loader import (
     load_tools_from_definition,
     ToolLoadingError
 )
-from agent_executor.core.model_identifier import create_model_identifier
-from agent_executor.core.subagent_builder import (
+from core.model_identifier import create_model_identifier
+from core.subagent_builder import (
     build_subagent,
     SubAgentCompilationError
 )

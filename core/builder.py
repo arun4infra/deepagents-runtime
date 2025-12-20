@@ -5,11 +5,11 @@ Graph Builder Module for Agent Executor (DEPRECATED).
 This module is DEPRECATED in favor of the new modular architecture.
 
 **Use this instead:**
-    from agent_executor.core import build_agent_from_definition
+    from deepagents_runtime.core import build_agent_from_definition
     agent = build_agent_from_definition(definition)
 
 **Old approach (deprecated):**
-    from agent_executor.core import GraphBuilder
+    from deepagents_runtime.core import GraphBuilder
     builder = GraphBuilder()
     agent = builder.build_from_definition(definition)
 
@@ -55,9 +55,9 @@ from typing import Any, Dict, List, Optional
 from langchain_core.tools import BaseTool
 from langchain_core.runnables import Runnable
 
-from agent_executor.core.model_identifier import create_model_identifier
-from agent_executor.core.subagent_builder import build_subagent
-from agent_executor.core.tool_loader import load_tools_from_definition
+from core.model_identifier import create_model_identifier
+from core.subagent_builder import build_subagent
+from core.tool_loader import load_tools_from_definition
 
 # Import deep agents pattern components
 # Note: The spec requires deepagents package with create_deep_agent and CompiledSubAgent
@@ -254,6 +254,20 @@ class GraphBuilder:
 
             orchestrator_system_prompt = orchestrator_actual_config.get("system_prompt", "")
             
+            # Extract and resolve orchestrator tools
+            orchestrator_tool_names = orchestrator_actual_config.get("tools", [])
+            orchestrator_tools = []
+            
+            for tool_name in orchestrator_tool_names:
+                if tool_name in available_tools:
+                    orchestrator_tools.append(available_tools[tool_name])
+                else:
+                    logger.warning(
+                        "orchestrator_tool_not_found",
+                        tool_name=tool_name,
+                        available_tools=list(available_tools.keys())
+                    )
+            
             # Log orchestrator configuration for verification
             logger.info(
                 "orchestrator_config_extracted",
@@ -261,6 +275,9 @@ class GraphBuilder:
                 model_identifier=orchestrator_model_identifier,
                 system_prompt_length=len(orchestrator_system_prompt),
                 system_prompt_preview=orchestrator_system_prompt[:200] if orchestrator_system_prompt else "EMPTY",
+                requested_tools=orchestrator_tool_names,
+                resolved_tools=len(orchestrator_tools),
+                tool_names=[t.name if hasattr(t, 'name') else str(t) for t in orchestrator_tools],
                 has_task_tool_instruction="task()" in orchestrator_system_prompt
             )
 
@@ -293,10 +310,17 @@ class GraphBuilder:
                         model=sa.get("model")
                     )
             
+            # Initialize the model object from the identifier string
+            # create_deep_agent expects a model object, not a string
+            # Use ModelFactory for clean separation of mock vs real models
+            from core.model_factory import ModelFactory
+            orchestrator_model = ModelFactory.create_model()
+            logger.info("model_created_via_factory", model_type=type(orchestrator_model).__name__)
+            
             main_runnable = create_deep_agent(
-                model=orchestrator_model_identifier,
+                model=orchestrator_model,
                 system_prompt=orchestrator_system_prompt,
-                tools=[],
+                tools=orchestrator_tools,  # Pass resolved orchestrator tools
                 subagents=compiled_subagents,  # List of CompiledSubAgent and SubAgent dict instances
                 checkpointer=self.checkpointer,  # Pass checkpointer for state persistence
             )
