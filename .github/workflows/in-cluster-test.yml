@@ -135,18 +135,25 @@ jobs:
           POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'langgraph_dev' }}
           DRAGONFLY_PASSWORD: ${{ secrets.DRAGONFLY_PASSWORD || 'dragonfly' }}
         run: |
-          # Set LLM mode based on input
-          if [ "$USE_REAL_LLM" = "true" ]; then
-            export USE_MOCK_LLM="false"
-            echo "Using real LLM APIs for testing"
-          else
-            export USE_MOCK_LLM="true"
-            echo "Using mock LLM for testing"
-          fi
+          # Create and run test job using template
+          export JOB_NAME="${{ inputs.test-name }}-$(date +%s)"
           
-          # Use the existing comprehensive test script
-          chmod +x scripts/ci/test.sh
-          ./scripts/ci/test.sh "$TEST_PATH"
+          # Substitute variables in template
+          sed -e "s/{{JOB_NAME}}/$JOB_NAME/g" \
+              -e "s/{{NAMESPACE}}/${{ inputs.namespace }}/g" \
+              -e "s/{{IMAGE}}/deepagents-runtime:${{ inputs.image-tag }}/g" \
+              -e "s|{{TEST_PATH}}|${{ inputs.test-path }}|g" \
+              -e "s/{{TEST_NAME}}/${{ inputs.test-name }}/g" \
+              scripts/ci/test-job-template.yaml > /tmp/test-job.yaml
+          
+          # Apply job and wait for completion
+          kubectl apply -f /tmp/test-job.yaml
+          kubectl wait --for=condition=complete --timeout=${{ inputs.timeout }}s job/$JOB_NAME -n ${{ inputs.namespace }}
+          
+          # Copy artifacts
+          POD_NAME=$(kubectl get pods -n ${{ inputs.namespace }} -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}')
+          mkdir -p artifacts
+          kubectl cp ${{ inputs.namespace }}/$POD_NAME:/app/artifacts/ ./artifacts/ || true
       
       - name: Upload test artifacts
         if: always()
