@@ -42,7 +42,7 @@ jobs:
   spec-generation-tests:
     uses: ./.github/workflows/in-cluster-test.yml
     with:
-      test-path: "tests/integration/test_agent_generation_workflow.py::test_agent_generation_end_to_end_success"
+      test-path: "tests/integration/test_agent_generation_workflow.py"
       test-name: "spec-generation"
       timeout: 600
       use-real-llm: false
