@@ -116,27 +116,27 @@ jobs:
           TEST_NAME: ${{ inputs.test-name }}
           TIMEOUT: ${{ inputs.timeout }}
           NAMESPACE: ${{ inputs.namespace }}
-          IMAGE: deepagents-runtime:${{ inputs.image-tag }}
           USE_REAL_LLM: ${{ inputs.use-real-llm }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Database credentials from K8s secrets (will be available in pod)
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'langgraph_dev' }}
+          DRAGONFLY_PASSWORD: ${{ secrets.DRAGONFLY_PASSWORD || 'dragonfly' }}
         run: |
-          # Make the centralized test script executable
-          chmod +x scripts/ci/in-cluster-test.sh
-          
           # Set LLM mode based on input
           if [ "$USE_REAL_LLM" = "true" ]; then
             export USE_MOCK_LLM="false"
-            export REAL_TIMEOUT="480"
             echo "Using real LLM APIs for testing"
           else
             export USE_MOCK_LLM="true"
-            export MOCK_TIMEOUT="60"
             echo "Using mock LLM for testing"
           fi
           
-          # Run the tests
-          ./scripts/ci/in-cluster-test.sh "$TEST_PATH" "$TEST_NAME" "$TIMEOUT"
+          # Use the existing comprehensive test script
+          chmod +x scripts/ci/test.sh
+          ./scripts/ci/test.sh "$TEST_PATH"
       
       - name: Upload test artifacts
         if: always()
