@@ -75,7 +75,7 @@ jobs:
       - name: Checkout zerotouch-platform
         uses: actions/checkout@v4
         with:
-          repository: 'bizmatters/zerotouch-platform'
+          repository: 'arun4infra/zerotouch-platform'
           path: 'zerotouch-platform'
           token: ${{ secrets.BOT_GITHUB_TOKEN || github.token }}
       
