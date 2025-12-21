@@ -9,13 +9,6 @@
 
 ### 1. Infrastructure Architecture
 
-#### COMMAND TO RUN LOCAL CLUSTER WITH ALL SERVICES DEPLOYED: 
-- deepagents-runtime/scripts/local/ci/nats_events.sh
-- kubectl config current-context
-- kubectl get nodes
-- kubectl get pods -A | grep -E "(dragonfly|redis|nats|postgres)"
-- kubectl get pods -A
-
 **In-Cluster Testing Model:**
 - Tests are designed to run **inside** the Kubernetes cluster as Jobs, not from local machines
 - Services communicate via in-cluster DNS names (e.g., `deepagents-runtime-cache.intelligence-deepagents.svc.cluster.local`)
@@ -79,6 +72,7 @@ class TestNATSEventsIntegration:
 - Validate each step before proceeding
 - Report results after each validation
 - No fallbacks or skips - tests must pass or fail clearly
+- Summary should not be more than 50 lines. keep response short to the point.
 
 ### 4. Environment Configuration
 
@@ -331,6 +325,20 @@ kubectl get events -n intelligence-deepagents --sort-by='.lastTimestamp'
 
 ## Practical Local Testing Flow While cluster is already created locally:
 
+#### COMMAND TO RUN LOCAL CLUSTER WITH ALL SERVICES DEPLOYED: 
+
+**Easy method:** deepagents-runtime/scripts/local/ci/run-test-incluster.sh
+
+**Manual method:**
+
+Service Claims: deepagents-runtime/platform/claims/
+
+- deepagents-runtime/scripts/local/ci/nats_events.sh
+- kubectl config current-context
+- kubectl get nodes
+- kubectl get pods -A | grep -E "(dragonfly|redis|nats|postgres)"
+- kubectl get pods -A
+
 The service gets its credentials from Kubernetes secrets that are automatically injected via envFrom. The test environment needs to use the same in-cluster DNS names and get the credentials from the environment.
 
 The problem is that the test is running locally and trying to connect to localhost, but it should be running inside the cluster as a Kubernetes Job to access the in-cluster services.
@@ -347,6 +355,9 @@ kubectl get secret deepagents-runtime-db-conn -n intelligence-deepagents -o json
 
 
 DRAGONFLY_PASSWORD="e7b072de-f86b-4758-8fa0-4ad15e88ec09" POSTGRES_USER="deepagents-runtime-db" POSTGRES_PASSWORD="lRJuDI1iTFEMkB0lK0x931hbnIQaJopm6wAQHKIpuezMzxdHM6hkAWCtPE64XqPD" POSTGRES_DB="deepagents-runtime-db" python -m pytest tests/integration/test_nats_events_integration.py::TestNATSEventsIntegration::test_full_workflow_integration -v -s
+
+source .venv/bin/activate && DRAGONFLY_PASSWORD="e7b072de-f86b-4758-8fa0-4ad15e88ec09" POSTGRES_USER="deepagents-runtime-db" POSTGRES_PASSWORD="lRJuDI1iTFEMkB0lK0x931hbnIQaJopm6wAQHKIpuezMzxdHM6hkAWCtPE64XqPD" POSTGRES_DB="deepagents-runtime-db" POSTGRES_SCHEMA="public" python -m pytest tests/integration/test_nats_events_integration.py::TestNATSEventsIntegration::test_full_workflow_integration -v -s
+
 
 🎉 Excellent! Step 1 is now PASSING!
 
