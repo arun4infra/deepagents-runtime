@@ -51,9 +51,13 @@ fi
 
 log_info "✓ Platform is ready for deployment"
 
-# Step 1: Create namespace
-log_info "Creating namespace..."
-kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+# Step 1: Validate namespace exists (created by tenant-infrastructure)
+log_info "Validating namespace exists..."
+if ! kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
+    log_error "Namespace '${NAMESPACE}' not found! Ensure tenant-infrastructure has synced."
+    exit 1
+fi
+log_info "✓ Namespace '${NAMESPACE}' exists"
 
 # Step 2: Apply ExternalSecret for LLM keys
 log_info "Applying ExternalSecret for LLM keys..."
