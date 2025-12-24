@@ -2,21 +2,14 @@
 set -euo pipefail
 
 # ==============================================================================
-# Centralized In-Cluster Testing Framework
+# Local CI Testing Script for deepagents-runtime
 # ==============================================================================
-# Purpose: Reusable script for running any test suite in Kubernetes cluster
-# Usage: ./scripts/ci/in-cluster-test.sh <test_path> [test_name] [timeout]
-# Examples:
-#   ./scripts/ci/in-cluster-test.sh tests/integration/test_nats_events_integration.py
-#   ./scripts/ci/in-cluster-test.sh tests/integration/test_agent_generation_workflow.py agent-generation 900
+# Purpose: Local testing of CI workflow using platform's centralized script
+# Usage: ./scripts/ci/in-cluster-test.sh
+# 
+# This script follows the filesystem contract approach where the service
+# declares requirements in ci/config.yaml and the platform handles execution.
 # ==============================================================================
-
-# Parameters
-TEST_PATH="${1:-tests/integration}"
-TEST_NAME="${2:-integration-tests}"
-TIMEOUT="${3:-600}"
-NAMESPACE="${NAMESPACE:-intelligence-deepagents}"
-IMAGE="${IMAGE:-deepagents-runtime:ci-test}"
 
 # Color codes
 RED='\033[0;31m'
@@ -25,214 +18,184 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $*" >&2; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*" >&2; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-log_warn() { echo -e "${YELLOW}[WARNING]${NC} $*" >&2; }
+log_info() { echo -e "${BLUE}[LOCAL-CI]${NC} $*"; }
+log_success() { echo -e "${GREEN}[LOCAL-CI]${NC} $*"; }
+log_error() { echo -e "${RED}[LOCAL-CI]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[LOCAL-CI]${NC} $*"; }
 
-# Validate inputs
-if [[ -z "$TEST_PATH" ]]; then
-    log_error "Test path is required"
-    echo "Usage: $0 <test_path> [test_name] [timeout]"
-    exit 1
-fi
-
-log_info "Starting in-cluster test execution"
-log_info "Test Path: $TEST_PATH"
-log_info "Test Name: $TEST_NAME"
-log_info "Timeout: ${TIMEOUT}s"
-log_info "Namespace: $NAMESPACE"
-log_info "Image: $IMAGE"
-
-# Generate unique job name
-JOB_NAME="${TEST_NAME}-$(date +%s)"
+# Get script directory and service root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Create test job from template
-create_test_job() {
-    local job_file="/tmp/${JOB_NAME}.yaml"
-    local template_file="$SCRIPT_DIR/test-job-template.yaml"
+main() {
+    echo "================================================================================"
+    echo "Local CI Testing for deepagents-runtime"
+    echo "================================================================================"
+    echo "  Service Root: $SERVICE_ROOT"
+    echo "  Using filesystem contract (ci/config.yaml)"
+    echo "================================================================================"
     
-    log_info "Creating test job: $JOB_NAME"
+    # Change to service root directory
+    cd "$SERVICE_ROOT"
     
-    # Use the template file and substitute variables
-    if [[ -f "$template_file" ]]; then
-        log_info "Using template file: $template_file"
-        
-        # Set default values for LLM configuration
-        USE_MOCK_LLM="${USE_MOCK_LLM:-true}"
-        USE_REAL_LLM="${USE_REAL_LLM:-false}"
-        MOCK_TIMEOUT="${MOCK_TIMEOUT:-60}"
-        
-        # Set API keys based on mode
-        if [[ "${USE_MOCK_LLM}" == "false" ]]; then
-            OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-            ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
-            if [[ -z "$OPENAI_API_KEY" ]]; then
-                log_error "OPENAI_API_KEY is required when USE_MOCK_LLM=false"
-                exit 1
-            fi
-        else
-            OPENAI_API_KEY="mock-key-for-testing"
-            ANTHROPIC_API_KEY="mock-key-for-testing"
-        fi
-        
-        sed -e "s/{{JOB_NAME}}/$JOB_NAME/g" \
-            -e "s/{{NAMESPACE}}/$NAMESPACE/g" \
-            -e "s/{{IMAGE}}/$IMAGE/g" \
-            -e "s|{{TEST_PATH}}|$TEST_PATH|g" \
-            -e "s/{{TEST_NAME}}/$TEST_NAME/g" \
-            -e "s/{{USE_MOCK_LLM}}/$USE_MOCK_LLM/g" \
-            -e "s/{{USE_REAL_LLM}}/$USE_REAL_LLM/g" \
-            -e "s/{{MOCK_TIMEOUT}}/$MOCK_TIMEOUT/g" \
-            -e "s/{{OPENAI_API_KEY}}/$OPENAI_API_KEY/g" \
-            -e "s/{{ANTHROPIC_API_KEY}}/$ANTHROPIC_API_KEY/g" \
-            "$template_file" > "$job_file"
-    else
-        log_error "Template file not found: $template_file"
+    # Validate filesystem contract
+    validate_filesystem_contract
+    
+    # Clone platform if needed
+    setup_platform_repository
+    
+    # Run centralized platform script
+    run_platform_ci_script
+}
+
+validate_filesystem_contract() {
+    log_info "Validating filesystem contract..."
+    
+    # Required files
+    if [[ ! -f "ci/config.yaml" ]]; then
+        log_error "Required ci/config.yaml not found"
+        log_error "Service must follow filesystem contract. See platform documentation."
         exit 1
     fi
-
-    echo "$job_file"
-}
-
-# Deploy and monitor test job
-run_test_job() {
-    local job_file="$1"
     
-    # Clean up any existing job
-    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" 2>/dev/null || true
-    
-    # Deploy test job
-    log_info "Deploying in-cluster test job..."
-    kubectl apply -f "$job_file"
-    
-    # Monitor job progress
-    log_info "Waiting for test job to complete..."
-    local elapsed=0
-    local status=""
-    local pod_name=""
-    
-    while [[ $elapsed -lt $TIMEOUT ]]; do
-        # Get job status
-        status=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "Pending")
-        
-        # Get pod info
-        pod_name=$(kubectl get pods -n "$NAMESPACE" -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-        
-        if [[ -n "$pod_name" ]]; then
-            pod_status=$(kubectl get pod "$pod_name" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-            pod_ready=$(kubectl get pod "$pod_name" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
-        else
-            pod_status="Pending"
-            pod_ready="false"
-        fi
-        
-        log_info "[${elapsed}s/${TIMEOUT}s] Job: $status, Pod: $pod_status, Ready: $pod_ready"
-        
-        # Show recent logs if pod is running
-        if [[ "$pod_status" == "Running" && -n "$pod_name" ]]; then
-            log_info "Recent logs:"
-            kubectl logs "$pod_name" -n "$NAMESPACE" --tail=5 2>/dev/null | sed 's/^/  /' || true
-        fi
-        
-        # Check if job completed
-        if [[ "$status" == "Complete" ]]; then
-            log_success "Test job completed successfully"
-            return 0
-        elif [[ "$status" == "Failed" ]]; then
-            log_error "Test job failed"
-            return 1
-        fi
-        
-        sleep 10
-        elapsed=$((elapsed + 10))
-    done
-    
-    log_error "Test job timed out after ${TIMEOUT}s"
-    return 1
-}
-
-# Copy artifacts from completed pod
-copy_artifacts() {
-    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l job-name="$JOB_NAME" -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || echo "")
-    
-    if [[ -n "$pod_name" ]]; then
-        log_info "Copying artifacts from pod: $pod_name"
-        
-        # Create local artifacts directory
-        mkdir -p artifacts
-        
-        # Copy test results and coverage
-        kubectl cp "$NAMESPACE/$pod_name:/app/artifacts/test-results.xml" "./artifacts/test-results.xml" 2>/dev/null || log_warn "No test-results.xml to copy"
-        kubectl cp "$NAMESPACE/$pod_name:/app/artifacts/coverage.xml" "./artifacts/coverage.xml" 2>/dev/null || log_warn "No coverage.xml to copy"
-        
-        # Copy HTML coverage report
-        kubectl cp "$NAMESPACE/$pod_name:/app/artifacts/htmlcov" "./artifacts/htmlcov" 2>/dev/null || log_warn "No htmlcov directory to copy"
-        
-        log_info "Artifacts copied to ./artifacts/"
+    # Load service name for validation
+    if command -v yq &> /dev/null; then
+        SERVICE_NAME=$(yq eval '.service.name' ci/config.yaml 2>/dev/null || echo "")
+        NAMESPACE=$(yq eval '.service.namespace' ci/config.yaml 2>/dev/null || echo "")
     else
-        log_warn "No pod found to copy artifacts from"
+        log_warn "yq not found, skipping config validation"
+        SERVICE_NAME="deepagents-runtime"
+        NAMESPACE="intelligence-deepagents"
     fi
-}
-
-# Get final test results
-get_test_results() {
-    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l job-name="$JOB_NAME" -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || echo "")
     
-    if [[ -n "$pod_name" ]]; then
-        log_info "Getting test results..."
-        kubectl logs "$pod_name" -n "$NAMESPACE" | tail -50
+    if [[ -z "$SERVICE_NAME" ]]; then
+        log_error "service.name is required in ci/config.yaml"
+        exit 1
+    fi
+    
+    if [[ -z "$NAMESPACE" ]]; then
+        log_error "service.namespace is required in ci/config.yaml"
+        exit 1
+    fi
+    
+    log_success "Filesystem contract validated for service: $SERVICE_NAME"
+    
+    # Optional structure validation
+    if [[ -d "migrations" ]]; then
+        log_info "Found migrations/ directory"
+    fi
+    
+    if [[ -d "tests/integration" ]]; then
+        log_info "Found tests/integration/ directory"
+    fi
+    
+    if [[ -d "patches" ]]; then
+        log_info "Found patches/ directory"
     fi
 }
 
-# Enhanced error handling
+setup_platform_repository() {
+    log_info "Setting up platform repository..."
+    
+    # Determine platform branch from config or use main
+    PLATFORM_BRANCH="main"
+    if command -v yq &> /dev/null; then
+        PLATFORM_BRANCH=$(yq eval '.platform.branch // "main"' ci/config.yaml 2>/dev/null)
+    fi
+    
+    # Create folder name with branch (replace / with -)
+    BRANCH_FOLDER_NAME=$(echo "$PLATFORM_BRANCH" | sed 's/\//-/g')
+    PLATFORM_CHECKOUT_DIR="zerotouch-platform-${BRANCH_FOLDER_NAME}"
+    
+    if [[ -d "$PLATFORM_CHECKOUT_DIR" ]]; then
+        log_info "Platform directory exists ($PLATFORM_CHECKOUT_DIR), updating..."
+        cd "$PLATFORM_CHECKOUT_DIR"
+        git fetch origin
+        git checkout "$PLATFORM_BRANCH"
+        git pull origin "$PLATFORM_BRANCH"
+        cd - > /dev/null
+    else
+        log_info "Cloning zerotouch-platform repository (branch: $PLATFORM_BRANCH)..."
+        git clone -b "$PLATFORM_BRANCH" https://github.com/arun4infra/zerotouch-platform.git "$PLATFORM_CHECKOUT_DIR"
+    fi
+    
+    log_success "Platform repository ready at: $PLATFORM_CHECKOUT_DIR (branch: $PLATFORM_BRANCH)"
+}
+
+run_platform_ci_script() {
+    log_info "Running centralized platform CI script..."
+    
+    # Path to centralized script
+    PLATFORM_SCRIPT="${PLATFORM_CHECKOUT_DIR}/scripts/bootstrap/preview/tenants/scripts/in-cluster-test.sh"
+    
+    if [[ ! -f "$PLATFORM_SCRIPT" ]]; then
+        log_error "Platform CI script not found: $PLATFORM_SCRIPT"
+        log_error "Ensure zerotouch-platform repository is properly cloned"
+        exit 1
+    fi
+    
+    # Make script executable
+    chmod +x "$PLATFORM_SCRIPT"
+    
+    # Run the centralized script (no arguments - uses filesystem contract)
+    log_info "Executing: $PLATFORM_SCRIPT"
+    echo ""
+    
+    if "$PLATFORM_SCRIPT"; then
+        echo ""
+        log_success "✅ Local CI testing completed successfully!"
+        echo ""
+        echo "================================================================================"
+        echo "LOCAL CI TESTING COMPLETE"
+        echo "================================================================================"
+        echo "  Service: deepagents-runtime"
+        echo "  Result:  PASSED"
+        echo "  Method:  Filesystem Contract (ci/config.yaml)"
+        echo ""
+        echo "The service is ready for CI/CD pipeline execution."
+        echo "================================================================================"
+    else
+        echo ""
+        log_error "❌ Local CI testing failed!"
+        echo ""
+        echo "================================================================================"
+        echo "LOCAL CI TESTING FAILED"
+        echo "================================================================================"
+        echo "  Service: deepagents-runtime"
+        echo "  Result:  FAILED"
+        echo ""
+        echo "Check the logs above for specific failure details."
+        echo "Fix issues and re-run this script before pushing to CI/CD."
+        echo "================================================================================"
+        exit 1
+    fi
+}
+
+# Cleanup function
+cleanup() {
+    log_info "Cleaning up local CI testing..."
+    
+    # Clean up Kind cluster if it exists
+    if command -v kind &> /dev/null; then
+        kind delete cluster --name zerotouch-preview 2>/dev/null || true
+    fi
+    
+    log_info "Local CI cleanup completed"
+}
+
+# Error handler
 error_handler() {
     local exit_code=$?
     local line_number=$1
     log_error "Script failed at line $line_number with exit code $exit_code"
     log_error "Last command: $BASH_COMMAND"
-    
-    # Get pod logs for debugging
-    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l job-name="$JOB_NAME" -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || echo "")
-    if [[ -n "$pod_name" ]]; then
-        log_error "Pod logs for debugging:"
-        kubectl logs "$pod_name" -n "$NAMESPACE" --tail=50 2>/dev/null || true
-    fi
-    
-    return $exit_code
+    cleanup
+    exit $exit_code
 }
 
+# Set up error handling
 trap 'error_handler $LINENO' ERR
+trap cleanup EXIT
 
-# Cleanup function
-cleanup() {
-    log_info "Cleaning up test job: $JOB_NAME"
-    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" 2>/dev/null || true
-    rm -f "/tmp/${JOB_NAME}.yaml" 2>/dev/null || true
-}
-
-# Main execution
-main() {
-    # Create test job
-    job_file=$(create_test_job)
-    
-    # Set up cleanup trap
-    trap cleanup EXIT
-    
-    # Run the test
-    if run_test_job "$job_file"; then
-        copy_artifacts
-        get_test_results
-        log_success "In-cluster tests completed successfully"
-        exit 0
-    else
-        copy_artifacts
-        get_test_results
-        log_error "In-cluster tests failed"
-        exit 1
-    fi
-}
-
-# Execute main function
+# Run main function
 main "$@"
