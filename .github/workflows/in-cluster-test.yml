@@ -14,12 +14,37 @@ name: In-Cluster Integration Tests
 
 on:
   workflow_call:
+    inputs:
+      test-path:
+        description: 'Path to the test file or directory to run'
+        required: false
+        type: string
+        default: 'tests/integration'
+      test-name:
+        description: 'Name identifier for the test suite'
+        required: false
+        type: string
+        default: 'integration-tests'
+      timeout:
+        description: 'Test timeout in seconds'
+        required: false
+        type: number
+        default: 600
+      use-real-llm:
+        description: 'Whether to use real LLM APIs instead of mocks'
+        required: false
+        type: boolean
+        default: false
     secrets:
       BOT_GITHUB_TOKEN:
         required: false
       BOT_GITHUB_USERNAME:
         required: false
       AWS_ROLE_ARN:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
         required: false
 
 permissions:
@@ -62,6 +87,12 @@ jobs:
           BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
           BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
           TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+          TEST_PATH: ${{ inputs.test-path }}
+          TEST_NAME: ${{ inputs.test-name }}
+          TEST_TIMEOUT: ${{ inputs.timeout }}
+          USE_REAL_LLM: ${{ inputs.use-real-llm }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # Use centralized platform script with filesystem contract
           chmod +x zerotouch-platform/scripts/bootstrap/preview/tenants/scripts/in-cluster-test.sh
