@@ -180,8 +180,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         postgres_creds = {
             "host": os.getenv("POSTGRES_HOST"),
             "port": int(os.getenv("POSTGRES_PORT", "5432")),
-            "database": os.getenv("POSTGRES_DB", "langgraph_dev"),
-            "username": os.getenv("POSTGRES_USER", "postgres"),
+            "database": os.getenv("POSTGRES_DB", "deepagents-runtime-db"),
+            "username": os.getenv("POSTGRES_USER", "deepagents-runtime-db"),
             "password": os.getenv("POSTGRES_PASSWORD"),
         }
 
