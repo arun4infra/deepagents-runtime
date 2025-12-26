@@ -47,3 +47,5 @@ done
 touch "$PATCH_MARKER"
 
 echo -e "${GREEN}✓ All preview patches applied successfully${NC}"
+
+exit 0
