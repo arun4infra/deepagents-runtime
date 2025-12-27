@@ -249,6 +249,7 @@ def require_service(service_name: str) -> None:
 # AUTO-SETUP (called when module is imported)
 # ==============================================================================
 
-# Automatically set up environment when this module is imported
-# This ensures consistent configuration across all test files
-setup_in_cluster_environment()
+# Note: Auto-setup disabled to allow Kubernetes secret environment variables
+# to take precedence. Tests should call setup_in_cluster_environment() explicitly
+# if needed for local development.
+# setup_in_cluster_environment()

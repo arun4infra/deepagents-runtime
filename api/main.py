@@ -180,8 +180,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         postgres_creds = {
             "host": os.getenv("POSTGRES_HOST"),
             "port": int(os.getenv("POSTGRES_PORT", "5432")),
-            "database": os.getenv("POSTGRES_DB", "langgraph_dev"),
-            "username": os.getenv("POSTGRES_USER", "postgres"),
+            "database": os.getenv("POSTGRES_DB", "deepagents-runtime-db"),
+            "username": os.getenv("POSTGRES_USER", "deepagents-runtime-db"),
             "password": os.getenv("POSTGRES_PASSWORD"),
         }
 
@@ -204,7 +204,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Build PostgreSQL connection string with search_path
         # Support preview environment schema override via POSTGRES_SCHEMA env var
-        schema_name = os.getenv("POSTGRES_SCHEMA", "agent_executor")
+        schema_name = os.getenv("POSTGRES_SCHEMA", "public")
 
         # psycopg v3 requires search_path via options parameter with URL encoding
         postgres_connection_string = (

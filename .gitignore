@@ -17,3 +17,5 @@ tests/mock/*
 !tests/mock/.gitkeep
 scripts/local/ci/logs
 artifacts
+zerotouch-platform
+.kiro

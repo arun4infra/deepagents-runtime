@@ -295,35 +295,38 @@ async def test_agent_generation_end_to_end_success(
     print(f"[DEBUG] Job execution event keys: {list(sample_job_execution_event.keys())}")
     print(f"[DEBUG] ===== END TEST EXECUTION START =====\n")
 
-    # PostgreSQL configuration - use TEST_* env vars if available
-    pg_host = os.environ.get("TEST_POSTGRES_HOST", "localhost")
-    pg_port = os.environ.get("TEST_POSTGRES_PORT", "15433")
-    pg_db = os.environ.get("TEST_POSTGRES_DB", "test_db")
-    pg_user = os.environ.get("TEST_POSTGRES_USER", "test_user")
+    # PostgreSQL configuration - use Kubernetes secrets if available, fallback to TEST_* env vars
+    pg_host = os.environ.get("POSTGRES_HOST") or os.environ.get("TEST_POSTGRES_HOST", "localhost")
+    pg_port = os.environ.get("POSTGRES_PORT") or os.environ.get("TEST_POSTGRES_PORT", "15433")
+    pg_db = os.environ.get("POSTGRES_DB") or os.environ.get("TEST_POSTGRES_DB", "test_db")
+    pg_user = os.environ.get("POSTGRES_USER") or os.environ.get("TEST_POSTGRES_USER", "test_user")
+    pg_password = os.environ.get("POSTGRES_PASSWORD") or os.environ.get("TEST_POSTGRES_PASSWORD", "test_pass")
     print(f"[DEBUG] PostgreSQL: {pg_user}@{pg_host}:{pg_port}/{pg_db}")
     
     monkeypatch.setenv("POSTGRES_HOST", pg_host)
     monkeypatch.setenv("POSTGRES_PORT", pg_port)
     monkeypatch.setenv("POSTGRES_DB", pg_db)
-    monkeypatch.setenv("POSTGRES_USER", os.environ.get("TEST_POSTGRES_USER", "test_user"))
-    monkeypatch.setenv("POSTGRES_PASSWORD", os.environ.get("TEST_POSTGRES_PASSWORD", "test_pass"))
+    monkeypatch.setenv("POSTGRES_USER", pg_user)
+    monkeypatch.setenv("POSTGRES_PASSWORD", pg_password)
     monkeypatch.setenv("POSTGRES_SCHEMA", "public")
 
-    # Dragonfly configuration - use TEST_* env vars if available
-    monkeypatch.setenv("DRAGONFLY_HOST", os.environ.get("TEST_REDIS_HOST", "localhost"))
-    monkeypatch.setenv("DRAGONFLY_PORT", os.environ.get("TEST_REDIS_PORT", "16380"))
-    if os.environ.get("TEST_REDIS_PASSWORD"):
-        monkeypatch.setenv("DRAGONFLY_PASSWORD", os.environ.get("TEST_REDIS_PASSWORD"))
+    # Dragonfly configuration - use Kubernetes secrets if available, fallback to TEST_* env vars
+    dragonfly_host = os.environ.get("DRAGONFLY_HOST") or os.environ.get("TEST_REDIS_HOST", "localhost")
+    dragonfly_port = os.environ.get("DRAGONFLY_PORT") or os.environ.get("TEST_REDIS_PORT", "16380")
+    monkeypatch.setenv("DRAGONFLY_HOST", dragonfly_host)
+    monkeypatch.setenv("DRAGONFLY_PORT", dragonfly_port)
+    if os.environ.get("DRAGONFLY_PASSWORD") or os.environ.get("TEST_REDIS_PASSWORD"):
+        dragonfly_password = os.environ.get("DRAGONFLY_PASSWORD") or os.environ.get("TEST_REDIS_PASSWORD")
+        monkeypatch.setenv("DRAGONFLY_PASSWORD", dragonfly_password)
 
-    # LLM API key - Load from .env file for actual LLM calls
+    # LLM API key - Load from .env file for actual LLM calls (without override to preserve K8s secrets)
     from dotenv import load_dotenv
-    load_dotenv(override=True)
+    load_dotenv(override=False)
     
-    # CRITICAL: Override NATS_URL after .env loading to use test environment
-    # The .env file contains nats://nats.nats.svc:4222 which doesn't exist in test env
-    test_nats_url = os.environ.get("TEST_NATS_URL", "nats://localhost:14222")
-    monkeypatch.setenv("NATS_URL", test_nats_url)
-    print(f"[DEBUG] CRITICAL: Set NATS_URL to {test_nats_url} (overriding .env file)")
+    # NATS URL - use Kubernetes secret if available, fallback to TEST_NATS_URL for local dev
+    nats_url = os.environ.get("NATS_URL") or os.environ.get("TEST_NATS_URL", "nats://localhost:14222")
+    monkeypatch.setenv("NATS_URL", nats_url)
+    print(f"[DEBUG] NATS_URL set to: {nats_url}")
 
     # Setup mock workflow if in mock mode
     from tests.utils.mock_workflow import is_mock_mode, setup_mock_workflow_for_test

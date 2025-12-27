@@ -9,7 +9,7 @@ centralized in-cluster configuration system.
 from tests.integration.in_cluster_conftest import setup_in_cluster_environment
 
 # Set up the environment automatically
-setup_in_cluster_environment()
+# setup_in_cluster_environment()  # Commented out to allow Kubernetes secrets to take precedence
 
 # Now import other modules that depend on environment variables
 import asyncio

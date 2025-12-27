@@ -16,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: migrations
-        image: ghcr.io/arun4infra/deepagents-runtime:latest
+        image: deepagents-runtime:latest
         command: ["/bin/bash", "-c"]
         args: 
           - |
