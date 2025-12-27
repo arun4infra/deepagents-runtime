@@ -36,6 +36,7 @@ jobs:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
 
   test-spec-generation:
     needs: build
@@ -52,6 +53,7 @@ jobs:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
 
   # STAGE 3: RELEASE - Runs ONLY if all tests pass (on main branch)
   release:
