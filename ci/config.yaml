@@ -10,6 +10,11 @@ build:
   context: "."
   tag: "ci-test"
 
+# NEW: Release pipeline integration
+release:
+  enabled: true                   # Enable release pipeline
+  config_file: "ci/release.yaml"  # Path to release-specific config
+
 test:
   timeout: 600
   parallel: true
