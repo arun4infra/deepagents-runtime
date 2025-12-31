@@ -32,7 +32,9 @@ dependencies:
   platform:
     - nats                   # NATS messaging platform (required for agent communication)
     - keda                   # KEDA autoscaling platform (required for scaling agents)
-  
+    - apis
+    - databases
+    
   # External services (deployed before this service)
   external: []               # deepagents-runtime has no external service dependencies
   
