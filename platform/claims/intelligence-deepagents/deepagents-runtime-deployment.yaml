@@ -6,7 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
-  image: ghcr.io/arun4infra/deepagents-runtime:latest
+  image: ghcr.io/arun4infra/deepagents-runtime
   size: micro
   nats:
     stream: AGENT_EXECUTION
