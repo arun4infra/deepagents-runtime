@@ -37,17 +37,17 @@ echo "  Dragonfly Host: ${DRAGONFLY_HOST:-not set}"
 echo "================================================================================"
 
 # Validate required environment variables
-if [ -z "${POSTGRES_HOST}" ]; then
+if [ -z "${POSTGRES_HOST:-}" ]; then
     echo "❌ ERROR: POSTGRES_HOST environment variable is required"
     exit 1
 fi
 
-if [ -z "${POSTGRES_PASSWORD}" ]; then
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
     echo "❌ ERROR: POSTGRES_PASSWORD environment variable is required"
     exit 1
 fi
 
-if [ -z "${DRAGONFLY_HOST}" ]; then
+if [ -z "${DRAGONFLY_HOST:-}" ]; then
     echo "❌ ERROR: DRAGONFLY_HOST environment variable is required"
     exit 1
 fi
