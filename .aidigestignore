@@ -5,6 +5,7 @@ htmlcov
 .coverage
 .env
 uv.lock
+zerotouch-platform/
 
 dev/
 codebase.md
