@@ -1,16 +1,22 @@
+__pycache__
+.kiro
 .langgraph_api
 .pytest_cache
 .venv
+dev
 htmlcov
+migrations
+scripts
 .coverage
 .env
 uv.lock
 zerotouch-platform/
 
-dev/
+platform
+tests
+
 codebase.md
-__pycache__
-.kiro
+
 
 .ruff_cache
 deepagents_runtime.egg-info
