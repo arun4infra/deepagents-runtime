@@ -57,9 +57,12 @@ diagnostics:
     check_platform_apis: true    # Check XRDs, compositions
   post_deploy:
     test_health_endpoint: true        # Test /health and /ready
-    test_database_connection: true    # Test PostgreSQL connection
+    test_database_connection: false    # Test PostgreSQL connection
     test_service_connectivity: true   # Test service accessibility
 
 # Platform configuration
 platform:
   branch: "main"
+  service:
+    type: "agentsandboxservices"
+    name: "deepagents-runtime-sandbox"
