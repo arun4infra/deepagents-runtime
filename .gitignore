@@ -27,3 +27,4 @@ platformllm-context
 llm-context
 platform
 .env.ssm
+.ci-stage-cache

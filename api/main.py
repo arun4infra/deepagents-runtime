@@ -167,7 +167,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     try:
         # Validate required environment variables
-        required_env_vars = ["POSTGRES_URI", "DRAGONFLY_HOST"]
+        required_env_vars = ["DATABASE_URL", "DRAGONFLY_HOST"]
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 
         if missing_vars:
@@ -175,8 +175,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error("startup_validation_failed", missing_variables=missing_vars, message=error_msg)
             raise RuntimeError(error_msg)
 
-        # Use POSTGRES_URI directly (LangGraph CLI expects this)
-        postgres_uri = os.getenv("POSTGRES_URI")
+        # Use DATABASE_URL for application, but also set POSTGRES_URI for LangGraph checkpointer
+        database_url = os.getenv("DATABASE_URL")
+        
+        # LangGraph CLI expects POSTGRES_URI environment variable for checkpointer
+        # Set it from DATABASE_URL if not already set
+        if not os.getenv("POSTGRES_URI"):
+            os.environ["POSTGRES_URI"] = database_url
 
         # Build Dragonfly (Redis-compatible) configuration from environment variables
         dragonfly_config = {
@@ -187,14 +192,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         logger.info(
             "credentials_loaded_from_environment",
-            postgres_uri_set=bool(postgres_uri),
+            database_url_set=bool(database_url),
+            postgres_uri_set=bool(os.getenv("POSTGRES_URI")),
             dragonfly_host=dragonfly_config["host"],
             dragonfly_port=dragonfly_config["port"],
             nats_url=os.getenv("NATS_URL", "nats://nats.nats.svc:4222"),
         )
 
-        # Use POSTGRES_URI directly - LangGraph and ExecutionManager expect full connection string
-        postgres_connection_string = postgres_uri
+        # Use DATABASE_URL for ExecutionManager connection string
+        postgres_connection_string = database_url
         logger.info("postgres_connection_string_loaded")
 
         # Initialize RedisClient (connects to Dragonfly)
