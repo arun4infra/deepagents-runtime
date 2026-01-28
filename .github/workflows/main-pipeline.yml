@@ -68,7 +68,6 @@ jobs:
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
           echo "DATABASE_URL=${{ secrets.PR_DATABASE_URL }}" >> $GITHUB_OUTPUT
           echo "OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
-          echo "ANTHROPIC_API_KEY=${{ secrets.PR_ANTHROPIC_API_KEY }}" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: dev
@@ -77,7 +76,6 @@ jobs:
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
           echo "DATABASE_URL=${{ secrets.DEV_DATABASE_URL }}" >> $GITHUB_OUTPUT
           echo "OPENAI_API_KEY=${{ secrets.DEV_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
-          echo "ANTHROPIC_API_KEY=${{ secrets.DEV_ANTHROPIC_API_KEY }}" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: staging
@@ -86,7 +84,6 @@ jobs:
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
           echo "DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}" >> $GITHUB_OUTPUT
           echo "OPENAI_API_KEY=${{ secrets.STAGING_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
-          echo "ANTHROPIC_API_KEY=${{ secrets.STAGING_ANTHROPIC_API_KEY }}" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: prod
@@ -95,7 +92,6 @@ jobs:
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
           echo "DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}" >> $GITHUB_OUTPUT
           echo "OPENAI_API_KEY=${{ secrets.PROD_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
-          echo "ANTHROPIC_API_KEY=${{ secrets.PROD_ANTHROPIC_API_KEY }}" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
 
   # STAGE 3: Release (dev → staging → production)
