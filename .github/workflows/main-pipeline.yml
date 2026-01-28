@@ -65,6 +65,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -100,6 +101,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     steps:
       - name: Generate GitHub App token
         id: app-token
