@@ -22,7 +22,7 @@ jobs:
 
   # STAGE 2: VALIDATION MATRIX - Runs parallel integration tests using the artifact
   test-nats-events:
-    needs: [build, prepare-secrets]
+    needs: [build]
     uses: arun4infra/zerotouch-platform/.github/workflows/ci-test.yml@main
     with:
       image_tag: ${{ needs.build.outputs.image_tag }}
@@ -30,7 +30,9 @@ jobs:
       test_name: "nats-events"
       timeout: 30
       use_real_llm: ${{ github.ref == 'refs/heads/main' }}
-      pr_secrets_blob: ${{ needs.prepare-secrets.outputs.pr_blob }}
+      pr_secrets_blob: |
+        DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
+        OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
@@ -38,7 +40,7 @@ jobs:
       TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
 
   test-spec-generation:
-    needs: [build, prepare-secrets]
+    needs: [build]
     uses: arun4infra/zerotouch-platform/.github/workflows/ci-test.yml@main
     with:
       image_tag: ${{ needs.build.outputs.image_tag }}
@@ -46,66 +48,18 @@ jobs:
       test_name: "spec-generation"
       timeout: 30
       use_real_llm: ${{ github.ref == 'refs/heads/main' }}
-      pr_secrets_blob: ${{ needs.prepare-secrets.outputs.pr_blob }}
+      pr_secrets_blob: |
+        DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
+        OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
 
-  # Prepare secret blobs for each environment
-  # CRITICAL: Secrets are Base64 encoded to bypass GitHub Actions secret masking
-  prepare-secrets:
-    runs-on: ubuntu-latest
-    outputs:
-      pr_blob: ${{ steps.pr.outputs.blob }}
-      dev_blob: ${{ steps.dev.outputs.blob }}
-      staging_blob: ${{ steps.staging.outputs.blob }}
-      prod_blob: ${{ steps.prod.outputs.blob }}
-    steps:
-      - id: pr
-        run: |
-          VAL="DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
-          OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}"
-          delimiter="$(openssl rand -hex 8)"
-          echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "$delimiter" >> $GITHUB_OUTPUT
-      
-      - id: dev
-        run: |
-          VAL="DATABASE_URL=${{ secrets.DEV_DATABASE_URL }}
-          OPENAI_API_KEY=${{ secrets.DEV_OPENAI_API_KEY }}"
-          delimiter="$(openssl rand -hex 8)"
-          echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "$delimiter" >> $GITHUB_OUTPUT
-      
-      - id: staging
-        run: |
-          VAL="DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
-          OPENAI_API_KEY=${{ secrets.STAGING_OPENAI_API_KEY }}"
-          delimiter="$(openssl rand -hex 8)"
-          echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "$delimiter" >> $GITHUB_OUTPUT
-      
-      - id: prod
-        run: |
-          VAL="DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}
-          OPENAI_API_KEY=${{ secrets.PROD_OPENAI_API_KEY }}"
-          delimiter="$(openssl rand -hex 8)"
-          echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "$delimiter" >> $GITHUB_OUTPUT
-
   # STAGE 3: Release (dev → staging → production)
   release:
-    needs: [build, test-nats-events, test-spec-generation, prepare-secrets]
+    needs: [build, test-nats-events, test-spec-generation]
     if: github.ref == 'refs/heads/main'
     uses: arun4infra/zerotouch-platform/.github/workflows/release-pipeline.yml@main
     with:
@@ -115,6 +69,12 @@ jobs:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-      DEV_SECRETS_BLOB: ${{ needs.prepare-secrets.outputs.dev_blob }}
-      STAGING_SECRETS_BLOB: ${{ needs.prepare-secrets.outputs.staging_blob }}
-      PROD_SECRETS_BLOB: ${{ needs.prepare-secrets.outputs.prod_blob }}
+      DEV_SECRETS_BLOB: |
+        DATABASE_URL=${{ secrets.DEV_DATABASE_URL }}
+        OPENAI_API_KEY=${{ secrets.DEV_OPENAI_API_KEY }}
+      STAGING_SECRETS_BLOB: |
+        DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+        OPENAI_API_KEY=${{ secrets.STAGING_OPENAI_API_KEY }}
+      PROD_SECRETS_BLOB: |
+        DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}
+        OPENAI_API_KEY=${{ secrets.PROD_OPENAI_API_KEY }}
