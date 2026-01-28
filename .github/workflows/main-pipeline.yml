@@ -54,6 +54,7 @@ jobs:
       TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
 
   # Prepare secret blobs for each environment
+  # CRITICAL: Secrets are Base64 encoded to bypass GitHub Actions secret masking
   prepare-secrets:
     runs-on: ubuntu-latest
     outputs:
@@ -64,34 +65,42 @@ jobs:
     steps:
       - id: pr
         run: |
+          VAL="DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
+          OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}"
           delimiter="$(openssl rand -hex 8)"
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "DATABASE_URL=${{ secrets.PR_DATABASE_URL }}" >> $GITHUB_OUTPUT
-          echo "OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
+          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: dev
         run: |
+          VAL="DATABASE_URL=${{ secrets.DEV_DATABASE_URL }}
+          OPENAI_API_KEY=${{ secrets.DEV_OPENAI_API_KEY }}"
           delimiter="$(openssl rand -hex 8)"
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "DATABASE_URL=${{ secrets.DEV_DATABASE_URL }}" >> $GITHUB_OUTPUT
-          echo "OPENAI_API_KEY=${{ secrets.DEV_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
+          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: staging
         run: |
+          VAL="DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+          OPENAI_API_KEY=${{ secrets.STAGING_OPENAI_API_KEY }}"
           delimiter="$(openssl rand -hex 8)"
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}" >> $GITHUB_OUTPUT
-          echo "OPENAI_API_KEY=${{ secrets.STAGING_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
+          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
       
       - id: prod
         run: |
+          VAL="DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}
+          OPENAI_API_KEY=${{ secrets.PROD_OPENAI_API_KEY }}"
           delimiter="$(openssl rand -hex 8)"
           echo "blob<<$delimiter" >> $GITHUB_OUTPUT
-          echo "DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}" >> $GITHUB_OUTPUT
-          echo "OPENAI_API_KEY=${{ secrets.PROD_OPENAI_API_KEY }}" >> $GITHUB_OUTPUT
+          echo "$VAL" | base64 -w 0 >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
 
   # STAGE 3: Release (dev → staging → production)
