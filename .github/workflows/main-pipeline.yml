@@ -15,6 +15,8 @@ jobs:
   # Generate GitHub App token for all jobs
   generate-token:
     runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.app-token.outputs.token }}
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -22,18 +24,35 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      
-      - name: Export token to environment
-        run: echo "GH_APP_TOKEN=${{ steps.app-token.outputs.token }}" >> $GITHUB_ENV
 
   # STAGE 1: BUILD - Creates the artifact ONCE
   build:
     needs: [generate-token]
-    uses: arun4infra/zerotouch-platform/.github/workflows/ci-build.yml@main
-    with:
-      service_name: deepagents-runtime
-    secrets:
-      BOT_GITHUB_TOKEN: ${{ needs.generate-token.outputs.token }}
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ needs.generate-token.outputs.token }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ needs.generate-token.outputs.token }}
+      
+      - name: Build and Push
+        id: build
+        run: |
+          chmod +x ./scripts/ci/build.sh
+          ./scripts/ci/build.sh
 
   # STAGE 2: VALIDATION MATRIX - Runs parallel integration tests using the artifact
   test-nats-events:
