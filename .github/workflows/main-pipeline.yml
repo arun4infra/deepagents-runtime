@@ -27,6 +27,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: bizmatters
           repositories: deepagents-runtime,spec-engine,zerotouch-tenants
       
       - name: Checkout
@@ -73,6 +74,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: bizmatters
           repositories: deepagents-runtime,spec-engine,zerotouch-tenants
       
       - name: Checkout
@@ -109,6 +111,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: bizmatters
           repositories: deepagents-runtime,spec-engine,zerotouch-tenants
       
       - name: Checkout
