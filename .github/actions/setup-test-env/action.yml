@@ -37,7 +37,7 @@ runs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ inputs.github-token }}
+        password: ${{ github.token }}
         
     - name: Pull Test Image
       shell: bash
