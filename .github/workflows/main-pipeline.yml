@@ -30,9 +30,6 @@ jobs:
       test_name: "nats-events"
       timeout: 30
       use_real_llm: ${{ github.ref == 'refs/heads/main' }}
-      pr_secrets_blob: |
-        DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
-        OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
@@ -48,9 +45,6 @@ jobs:
       test_name: "spec-generation"
       timeout: 30
       use_real_llm: ${{ github.ref == 'refs/heads/main' }}
-      pr_secrets_blob: |
-        DATABASE_URL=${{ secrets.PR_DATABASE_URL }}
-        OPENAI_API_KEY=${{ secrets.PR_OPENAI_API_KEY }}
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
