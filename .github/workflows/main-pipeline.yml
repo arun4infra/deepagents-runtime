@@ -138,6 +138,7 @@ jobs:
     needs: [build, test-nats-events, test-spec-generation]
     if: github.ref == 'refs/heads/main'
     uses: bizmatters/ci-workflow-templates/.github/workflows/release-pipeline.yml@main
+    secrets: inherit
     with:
       service_name: deepagents-runtime
       image_tag: ${{ needs.build.outputs.image_tag }}
